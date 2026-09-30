@@ -4,6 +4,7 @@ import { getScope, scopeWhere } from '@/lib/scope';
 import { sendToTelegram, buildOrderMessage } from '@/lib/telegram';
 import { sendToMax, buildOrderMessageMax } from '@/lib/max';
 import { getMaxTokenForPartner } from '@/lib/max-token';
+import { sendPushToOwners } from '@/lib/fcm';
 
 export async function GET(req: NextRequest) {
   const scope = await getScope();
@@ -16,20 +17,15 @@ export async function GET(req: NextRequest) {
 
   let where: any = { ...scopeWhere(scope) };
 
-  if (filter === 'active') {
-    where = { ...where, status: 'ACTIVE' };
-  } else if (filter === 'success') {
+  if (filter === 'active') where = { ...where, status: 'ACTIVE' };
+  else if (filter === 'success')
     where = { ...where, status: 'CLOSED', result: 'SUCCESS' };
-  } else if (filter === 'fail') {
+  else if (filter === 'fail')
     where = { ...where, status: 'CLOSED', result: 'FAIL' };
-  }
 
   const orders = await prisma.order.findMany({
     where,
-    include: {
-      groups: { include: { group: true } },
-      logs: true,
-    },
+    include: { groups: { include: { group: true } }, logs: true },
     orderBy: { createdAt: 'desc' },
   });
 
@@ -43,7 +39,6 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-
   const {
     category,
     city,
@@ -54,40 +49,30 @@ export async function POST(req: NextRequest) {
     groupIds,
     orderAmount,
     commissionAmount,
+    publishedInApp,
   } = body;
 
-  if (!category) {
+  if (!category)
     return NextResponse.json({ error: 'Укажите рубрику' }, { status: 400 });
-  }
-  if (!startAt) {
+  if (!startAt)
+    return NextResponse.json({ error: 'Укажите дату' }, { status: 400 });
+  if (!dispatcher || !dispatcherPhone)
+    return NextResponse.json({ error: 'Укажите диспетчера' }, { status: 400 });
+  if (!orderAmount || Number(orderAmount) <= 0)
+    return NextResponse.json({ error: 'Укажите сумму' }, { status: 400 });
+  if (!commissionAmount || Number(commissionAmount) <= 0)
+    return NextResponse.json({ error: 'Укажите диспетчерские' }, { status: 400 });
+
+  if (publishedInApp && !city) {
     return NextResponse.json(
-      { error: 'Укажите дату и время' },
-      { status: 400 },
-    );
-  }
-  if (!dispatcher || !dispatcherPhone) {
-    return NextResponse.json(
-      { error: 'Укажите диспетчера' },
-      { status: 400 },
-    );
-  }
-  if (!orderAmount || Number(orderAmount) <= 0) {
-    return NextResponse.json(
-      { error: 'Укажите сумму оборота' },
-      { status: 400 },
-    );
-  }
-  if (!commissionAmount || Number(commissionAmount) <= 0) {
-    return NextResponse.json(
-      { error: 'Укажите диспетчерские' },
+      { error: 'Для публикации в приложении укажите город' },
       { status: 400 },
     );
   }
 
   const startAtDate = new Date(startAt);
-  if (isNaN(startAtDate.getTime())) {
+  if (isNaN(startAtDate.getTime()))
     return NextResponse.json({ error: 'Неверная дата' }, { status: 400 });
-  }
 
   const whenText = startAtDate.toLocaleString('ru-RU', {
     day: '2-digit',
@@ -97,14 +82,10 @@ export async function POST(req: NextRequest) {
     minute: '2-digit',
   });
 
-  // Проверяем, что группы принадлежат пользователю
   let validGroupIds: string[] = [];
   if (groupIds?.length) {
     const allowed = await prisma.telegramGroup.findMany({
-      where: {
-        id: { in: groupIds },
-        ...scopeWhere(scope),
-      },
+      where: { id: { in: groupIds }, ...scopeWhere(scope) },
       select: { id: true },
     });
     validGroupIds = allowed.map((g) => g.id);
@@ -122,14 +103,25 @@ export async function POST(req: NextRequest) {
       orderAmount: Number(orderAmount),
       commissionAmount: Number(commissionAmount),
       partnerId: scope.partnerId,
+      publishedInApp: !!publishedInApp,
       groups: validGroupIds.length
         ? { create: validGroupIds.map((groupId) => ({ groupId })) }
         : undefined,
     },
-    include: {
-      groups: { include: { group: true } },
-    },
+    include: { groups: { include: { group: true } } },
   });
+
+  if (publishedInApp && city) {
+    try {
+      await sendPushToOwners(city, category, {
+        title: 'Новая заявка',
+        body: `${category} — ${city}. Сумма: ${Number(orderAmount).toLocaleString('ru-RU')} ₽`,
+        orderId: order.id,
+      });
+    } catch (e) {
+      console.error('Push error:', e);
+    }
+  }
 
   if (validGroupIds.length === 0) {
     return NextResponse.json({ order, sendResults: [] });
@@ -140,11 +132,7 @@ export async function POST(req: NextRequest) {
   for (const og of order.groups) {
     const group = og.group;
     if (!group.isActive) {
-      sendResults.push({
-        title: group.title,
-        ok: false,
-        error: 'Группа выключена',
-      });
+      sendResults.push({ title: group.title, ok: false, error: 'Группа выключена' });
       continue;
     }
 
@@ -153,28 +141,15 @@ export async function POST(req: NextRequest) {
 
     if (group.messenger === 'max') {
       messageText = buildOrderMessageMax({
-        category,
-        city,
-        when: whenText,
-        description,
-        dispatcher,
-        dispatcherPhone,
+        category, city, when: whenText, description, dispatcher, dispatcherPhone,
       });
-
-      // Берём токен партнёра-владельца группы, если есть, иначе — общий из env
       const token = await getMaxTokenForPartner(group.partnerId);
-
       result = token
         ? await sendToMax(group.chatId, messageText, token)
-        : { ok: false, error: 'MAX-токен для этого партнёра не настроен' };
+        : { ok: false, error: 'MAX-токен не настроен' };
     } else {
       messageText = buildOrderMessage({
-        category,
-        city,
-        when: whenText,
-        description,
-        dispatcher,
-        dispatcherPhone,
+        category, city, when: whenText, description, dispatcher, dispatcherPhone,
       });
       result = await sendToTelegram(group.chatId, messageText);
     }
@@ -192,11 +167,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    sendResults.push({
-      title: group.title,
-      ok: result.ok,
-      error: result.error,
-    });
+    sendResults.push({ title: group.title, ok: result.ok, error: result.error });
   }
 
   return NextResponse.json({ order, sendResults });
