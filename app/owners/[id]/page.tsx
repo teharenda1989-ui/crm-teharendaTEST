@@ -1,7 +1,9 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
+import { getScope } from '@/lib/scope';
 import OwnerEditForm from '@/components/OwnerEditForm';
+import OwnerVehiclesForm from '@/components/OwnerVehiclesForm';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,12 +12,24 @@ interface Props {
 }
 
 export default async function OwnerPage({ params }: Props) {
+  const scope = await getScope();
+
   const owner = await prisma.owner.findUnique({
     where: { id: params.id },
-    include: { vehicles: true },
+    include: { vehicles: { orderBy: { createdAt: 'asc' } } },
   });
 
   if (!owner) notFound();
+
+  const allVehicles = await prisma.vehicle.findMany({
+    where: scope?.partnerId
+      ? { owner: { partnerId: scope.partnerId } }
+      : {},
+    select: { category: true },
+  });
+  const suggestions = Array.from(
+    new Set(allVehicles.map((v) => v.category)),
+  ).sort();
 
   return (
     <div>
@@ -94,22 +108,15 @@ export default async function OwnerPage({ params }: Props) {
           🚜 Техника ({owner.vehicles.length})
         </h2>
 
-        {owner.vehicles.length === 0 ? (
-          <p className="text-slate-500">Техника не добавлена.</p>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {owner.vehicles.map((v) => (
-              <div key={v.id} className="border border-slate-200 rounded p-4">
-                <div className="font-medium text-slate-900 mb-1">
-                  {v.category}
-                </div>
-                {v.comment && (
-                  <div className="text-sm text-slate-500">{v.comment}</div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
+        <OwnerVehiclesForm
+          ownerId={owner.id}
+          initialVehicles={owner.vehicles.map((v) => ({
+            id: v.id,
+            category: v.category,
+            comment: v.comment,
+          }))}
+          suggestions={suggestions}
+        />
       </div>
 
       <div className="mb-6">
