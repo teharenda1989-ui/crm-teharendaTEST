@@ -35,6 +35,7 @@ export default function NewOrderPage() {
   const [orderAmount, setOrderAmount] = useState('');
   const [commissionAmount, setCommissionAmount] = useState('');
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
+  const [publishedInApp, setPublishedInApp] = useState(false);
 
   const [sending, setSending] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -94,6 +95,10 @@ export default function NewOrderPage() {
       setError('Укажите диспетчерские');
       return;
     }
+    if (publishedInApp && !city) {
+      setError('Для публикации в приложении укажите город');
+      return;
+    }
 
     setSending(true);
 
@@ -111,6 +116,7 @@ export default function NewOrderPage() {
           groupIds: selectedGroups,
           orderAmount: Number(orderAmount),
           commissionAmount: Number(commissionAmount),
+          publishedInApp,
         }),
       });
 
@@ -210,9 +216,7 @@ export default function NewOrderPage() {
 
         <div className="bg-white rounded-lg shadow p-6">
           <h2 className="text-lg font-semibold mb-2">Финансы</h2>
-          <p className="text-sm text-slate-500 mb-4">
-            Обязательные поля.
-          </p>
+          <p className="text-sm text-slate-500 mb-4">Обязательные поля.</p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -280,6 +284,32 @@ export default function NewOrderPage() {
           </div>
         </div>
 
+        {/* МОБИЛЬНОЕ ПРИЛОЖЕНИЕ */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold mb-2">Мобильное приложение</h2>
+          <p className="text-sm text-slate-500 mb-4">
+            Отправить push-уведомление владельцам техники, у которых подходит
+            рубрика и город.
+          </p>
+
+          <label className="flex items-center gap-3 cursor-pointer p-3 rounded border border-slate-200 hover:bg-slate-50">
+            <input
+              type="checkbox"
+              checked={publishedInApp}
+              onChange={(e) => setPublishedInApp(e.target.checked)}
+              className="w-5 h-5"
+            />
+            <div>
+              <div className="font-medium">📱 Опубликовать в приложении</div>
+              <div className="text-sm text-slate-500">
+                {!city
+                  ? 'Укажите город выше, чтобы активировать'
+                  : `Push получат владельцы с рубрикой «${category || '—'}» в городе «${city}»`}
+              </div>
+            </div>
+          </label>
+        </div>
+
         <div className="bg-white rounded-lg shadow p-6">
           <h2 className="text-lg font-semibold mb-2">
             Куда отправить (группы)
@@ -293,7 +323,6 @@ export default function NewOrderPage() {
             <p className="text-slate-500 text-sm">Нет добавленных групп.</p>
           ) : (
             <div className="flex flex-col gap-6">
-              {/* Telegram */}
               {tgGroups.length > 0 && (
                 <div>
                   <div className="flex items-center justify-between mb-2">
@@ -335,7 +364,6 @@ export default function NewOrderPage() {
                 </div>
               )}
 
-              {/* MAX */}
               {maxGroups.length > 0 && (
                 <div>
                   <div className="flex items-center justify-between mb-2">
