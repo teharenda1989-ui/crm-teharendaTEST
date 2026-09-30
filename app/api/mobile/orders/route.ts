@@ -13,10 +13,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Не авторизован' }, { status: 401 });
   }
 
-  const { searchParams } = new URL(req.url);
-  const mineOnly = searchParams.get('mineOnly') === 'true';
-
-  // Все Owner-записи этого User (мультигородность)
   const owners = await prisma.owner.findMany({
     where: { userId: session.userId, isActive: true },
     include: { vehicles: true },
@@ -26,7 +22,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ orders: [] });
   }
 
-  // Не на смене — не показываем новые
   const onShiftOwners = owners.filter((o) => o.isOnShift);
   if (!onShiftOwners.length) {
     return NextResponse.json({ orders: [] });
@@ -37,16 +32,13 @@ export async function GET(req: NextRequest) {
   ) as string[];
 
   const categories = Array.from(
-    new Set(
-      onShiftOwners.flatMap((o) => o.vehicles.map((v) => v.category)),
-    ),
+    new Set(onShiftOwners.flatMap((o) => o.vehicles.map((v) => v.category))),
   );
 
   if (!cities.length || !categories.length) {
     return NextResponse.json({ orders: [] });
   }
 
-  // Заявки: в нужных городах, по нужным рубрикам, опубликованы, не взяты никем
   const orders = await prisma.order.findMany({
     where: {
       status: 'ACTIVE',
@@ -57,6 +49,15 @@ export async function GET(req: NextRequest) {
     },
     orderBy: { createdAt: 'desc' },
     take: 100,
+    select: {
+      id: true,
+      category: true,
+      city: true,
+      when: true,
+      description: true,
+      startAt: true,
+      createdAt: true,
+    },
   });
 
   return NextResponse.json({ orders });
