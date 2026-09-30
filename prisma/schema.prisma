@@ -16,11 +16,14 @@ model User {
   role         String   @default("PARTNER")
   isActive     Boolean  @default(true)
   lastLoginAt  DateTime?
+  fcmToken     String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   partnerId String?
   partner   Partner? @relation(fields: [partnerId], references: [id])
+
+  owner Owner?
 }
 
 model Partner {
@@ -45,39 +48,48 @@ model Partner {
 }
 
 model Owner {
-  id        String   @id @default(cuid())
-  name      String
-  phone     String
-  company   String?
-  city      String?
-  address   String?
-  lat       Float?
-  lng       Float?
-  comment   String?
-  notes     String?
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              String   @id @default(cuid())
+  name            String
+  phone           String
+  email           String?  @unique
+  company         String?
+  city            String?
+  address         String?
+  lat             Float?
+  lng             Float?
+  comment         String?
+  notes           String?
+  isActive        Boolean  @default(true)
+  isRegistered    Boolean  @default(false)
+  isOnShift       Boolean  @default(true)
+  rating          Float    @default(4.5)
+  completedOrders Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   partnerId String?
   partner   Partner? @relation(fields: [partnerId], references: [id])
 
+  userId String?  @unique
+  user   User?    @relation(fields: [userId], references: [id])
+
   vehicles Vehicle[]
   logs     MessageLog[]
+  takes    OrderTake[]
 
   @@unique([partnerId, phone])
 }
 
 model Vehicle {
-  id        String   @id @default(cuid())
-  ownerId   String
-  owner     Owner    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  id      String @id @default(cuid())
+  ownerId String
+  owner   Owner  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
-  category  String
-  brand     String?
-  model     String?
-  year      Int?
-  comment   String?
+  category String
+  brand    String?
+  model    String?
+  year     Int?
+  comment  String?
 
   createdAt DateTime @default(now())
 }
@@ -103,6 +115,7 @@ model Client {
   partner   Partner? @relation(fields: [partnerId], references: [id])
 
   createdAt DateTime @default(now())
+  orders    Order[]
 }
 
 model TelegramGroup {
@@ -123,36 +136,42 @@ model TelegramGroup {
 }
 
 model Order {
-  id               String    @id @default(cuid())
-  category         String
-  city             String?
+  id              String    @id @default(cuid())
+  category        String
+  city            String?
+  startAt         DateTime?
+  when            String?
+  description     String?
+  dispatcher      String
+  dispatcherPhone String
 
-  startAt          DateTime?
-  when             String?
+  status             String    @default("ACTIVE")
+  result             String?
+  closedInTelegram   Boolean   @default(false)
+  closedInTelegramAt DateTime?
 
-  description      String?
-  dispatcher       String
-  dispatcherPhone  String
-
-  status              String    @default("ACTIVE")
-  result              String?
-  closedInTelegram    Boolean   @default(false)
-  closedInTelegramAt  DateTime?
-
-  assigneeName     String?
-  assigneePhone    String?
+  assigneeName  String?
+  assigneePhone String?
 
   orderAmount      Int?
   commissionAmount Int?
 
-  createdAt        DateTime  @default(now())
-  closedAt         DateTime?
+  publishedInApp Boolean @default(false)
+
+  clientId    String?
+  client      Client? @relation(fields: [clientId], references: [id])
+  clientName  String?
+  clientPhone String?
+
+  createdAt DateTime  @default(now())
+  closedAt  DateTime?
 
   partnerId String?
   partner   Partner? @relation(fields: [partnerId], references: [id])
 
   groups OrderGroup[]
   logs   MessageLog[]
+  takes  OrderTake[]
 }
 
 model OrderGroup {
@@ -161,6 +180,22 @@ model OrderGroup {
   order   Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
   groupId String
   group   TelegramGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+}
+
+model OrderTake {
+  id           String    @id @default(cuid())
+  orderId      String
+  order        Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  ownerId      String
+  owner        Owner     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  status       String    @default("TAKEN")
+  takenAt      DateTime  @default(now())
+  canceledAt   DateTime?
+  cancelReason String?
+  ratingImpact Float?
+
+  @@index([orderId])
+  @@index([ownerId])
 }
 
 model MessageLog {
@@ -178,6 +213,18 @@ model MessageLog {
   order   Order?  @relation(fields: [orderId], references: [id])
   ownerId String?
   owner   Owner?  @relation(fields: [ownerId], references: [id])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  type      String
+  orderId   String?
+  ownerId   String?
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([isRead])
 }
 
 model RoyaltyReport {
