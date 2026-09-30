@@ -12,6 +12,7 @@ const PUBLIC_PATHS = [
   '/api/auth/login',
   '/api/auth/logout',
   '/api/mobile',
+  '/api/dev',
 ];
 
 export async function middleware(req: NextRequest) {
