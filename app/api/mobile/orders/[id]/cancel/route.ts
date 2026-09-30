@@ -2,7 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyMobileToken, getBearerToken } from '@/lib/mobile-auth';
 
-function calcRatingImpact(hoursLeft: number): number {
+function calcRatingImpact(
+  hoursLeft: number,
+  contactsShared: boolean,
+): number {
+  // После получения контактов — штраф всегда серьёзный
+  if (contactsShared) return -0.3;
+  // До получения — по времени до старта
   if (hoursLeft >= 24) return -0.02;
   if (hoursLeft >= 2) return -0.15;
   return -0.3;
@@ -40,7 +46,6 @@ export async function POST(
     return NextResponse.json({ error: 'Заявка не найдена' }, { status: 404 });
   }
 
-  // Находим все Owner-записи этого User
   const ownerIds = (
     await prisma.owner.findMany({
       where: { userId: session.userId },
@@ -64,13 +69,13 @@ export async function POST(
     );
   }
 
-  // Расчёт штрафа
   let hoursLeft = 999;
   if (order.startAt) {
     hoursLeft =
       (new Date(order.startAt).getTime() - Date.now()) / 1000 / 3600;
   }
-  const ratingImpact = calcRatingImpact(hoursLeft);
+
+  const ratingImpact = calcRatingImpact(hoursLeft, take.clientContactsShared);
 
   const newRating = Math.max(
     1.0,
@@ -93,15 +98,26 @@ export async function POST(
       data: { rating: newRating },
     });
 
+    // Заявка возвращается в «Новые»
+    await tx.order.update({
+      where: { id: order.id },
+      data: {
+        closedInTelegram: false,
+        closedInTelegramAt: null,
+        assigneeName: null,
+        assigneePhone: null,
+      },
+    });
+
     await tx.notification.create({
       data: {
         type: 'ORDER_CANCELED',
         orderId: order.id,
         ownerId: take.ownerId,
-        message: `${take.owner.name} отказался от ${order.category}, причина: ${reason}`,
+        message: `${take.owner.name} отказался от ${order.category}${take.clientContactsShared ? ' (после получения контактов клиента)' : ''}, причина: ${reason}`,
       },
     });
   });
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, ratingImpact });
 }
