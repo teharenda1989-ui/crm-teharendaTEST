@@ -32,7 +32,6 @@ export async function POST(
     );
   }
 
-  // Уже взял кто-то другой?
   const alreadyTaken = order.takes.some((t) => t.status === 'TAKEN');
   if (alreadyTaken) {
     return NextResponse.json(
@@ -41,7 +40,6 @@ export async function POST(
     );
   }
 
-  // Находим Owner-запись этого User с подходящим городом
   const owner = await prisma.owner.findFirst({
     where: {
       userId: session.userId,
@@ -56,12 +54,23 @@ export async function POST(
     );
   }
 
-  const take = await prisma.$transaction(async (tx) => {
-    const t = await tx.orderTake.create({
+  const result = await prisma.$transaction(async (tx) => {
+    const take = await tx.orderTake.create({
       data: {
         orderId: order.id,
         ownerId: owner.id,
         status: 'TAKEN',
+      },
+    });
+
+    // Статус «Уточнение деталей»: закрываем поиск в группах, подтягиваем исполнителя
+    await tx.order.update({
+      where: { id: order.id },
+      data: {
+        closedInTelegram: true,
+        closedInTelegramAt: new Date(),
+        assigneeName: owner.name,
+        assigneePhone: owner.phone,
       },
     });
 
@@ -70,12 +79,12 @@ export async function POST(
         type: 'ORDER_TAKEN',
         orderId: order.id,
         ownerId: owner.id,
-        message: `${owner.name} взял ${order.category}`,
+        message: `${owner.name} взял ${order.category} (уточнение деталей)`,
       },
     });
 
-    return t;
+    return take;
   });
 
-  return NextResponse.json({ ok: true, take });
+  return NextResponse.json({ ok: true, take: result });
 }
