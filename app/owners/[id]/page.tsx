@@ -11,12 +11,27 @@ interface Props {
   params: { id: string };
 }
 
+function ratingStars(rating: number) {
+  const full = Math.floor(rating);
+  const half = rating - full >= 0.5;
+  return (
+    '★'.repeat(full) +
+    (half ? '⯨' : '') +
+    '☆'.repeat(Math.max(0, 5 - full - (half ? 1 : 0)))
+  );
+}
+
 export default async function OwnerPage({ params }: Props) {
   const scope = await getScope();
 
   const owner = await prisma.owner.findUnique({
     where: { id: params.id },
-    include: { vehicles: { orderBy: { createdAt: 'asc' } } },
+    include: {
+      vehicles: { orderBy: { createdAt: 'asc' } },
+      takes: {
+        select: { status: true },
+      },
+    },
   });
 
   if (!owner) notFound();
@@ -27,9 +42,15 @@ export default async function OwnerPage({ params }: Props) {
       : {},
     select: { category: true },
   });
+
   const suggestions = Array.from(
     new Set(allVehicles.map((v) => v.category)),
   ).sort();
+
+  const doneCount = owner.takes.filter((t) => t.status === 'DONE').length;
+  const canceledCount = owner.takes.filter(
+    (t) => t.status === 'CANCELED',
+  ).length;
 
   return (
     <div>
@@ -45,6 +66,12 @@ export default async function OwnerPage({ params }: Props) {
             <h1 className="text-3xl font-bold mb-1">{owner.name}</h1>
             {owner.company && (
               <p className="text-slate-500 mb-3">{owner.company}</p>
+            )}
+
+            {owner.isRegistered && (
+              <div className="mt-2 inline-block bg-orange-100 text-orange-700 text-xs font-medium px-3 py-1 rounded">
+                📱 Зарегистрирован в приложении
+              </div>
             )}
 
             <div className="flex flex-wrap gap-3 mt-4">
@@ -95,6 +122,32 @@ export default async function OwnerPage({ params }: Props) {
             )}
           </div>
         </div>
+
+        {owner.isRegistered && (
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-slate-50 rounded-lg">
+            <div>
+              <div className="text-sm text-slate-500 mb-1">Рейтинг</div>
+              <div className="text-xl font-bold text-amber-600">
+                {ratingStars(owner.rating)}{' '}
+                <span className="text-slate-900">
+                  {owner.rating.toFixed(1)}
+                </span>
+              </div>
+            </div>
+            <div>
+              <div className="text-sm text-slate-500 mb-1">Выполнено</div>
+              <div className="text-xl font-bold text-green-600">
+                {doneCount}
+              </div>
+            </div>
+            <div>
+              <div className="text-sm text-slate-500 mb-1">Отменено</div>
+              <div className="text-xl font-bold text-red-600">
+                {canceledCount}
+              </div>
+            </div>
+          </div>
+        )}
 
         {owner.comment && (
           <div className="mt-4 p-3 bg-slate-50 rounded text-slate-700">
