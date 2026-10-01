@@ -179,6 +179,29 @@ export default function OrderPage() {
     }
   };
 
+  const handleConfirmComplete = async () => {
+    if (
+      !confirm(
+        'Подтвердить выполнение заявки? Исполнитель получит +0.05 к рейтингу.',
+      )
+    )
+      return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/orders/${id}/confirm-complete`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Ошибка');
+      alert('✅ Заявка подтверждена как выполненная');
+      router.push('/orders');
+      router.refresh();
+    } catch (e: any) {
+      setError(e.message);
+      setSaving(false);
+    }
+  };
+
   const handleCloseSearch = async () => {
     if (!order) return;
 
@@ -291,9 +314,12 @@ export default function OrderPage() {
   const hasGroups = order.groups.length > 0;
   const canCloseSearch =
     order.status === 'ACTIVE' && hasGroups && !order.closedInTelegram;
-  const canComplete = order.status === 'ACTIVE' && (!hasGroups || order.closedInTelegram);
+  const canComplete =
+    order.status === 'ACTIVE' && (!hasGroups || order.closedInTelegram);
 
-  const activeTake = order.takes?.find((t) => t.status === 'TAKEN');
+  const activeTake = order.takes?.find(
+    (t) => t.status === 'TAKEN' || t.status === 'COMPLETED_PENDING',
+  );
   const hasTaken = !!activeTake;
   const contactsShared = activeTake?.clientContactsShared ?? false;
 
@@ -334,14 +360,25 @@ export default function OrderPage() {
                   {hasGroups ? '🆕 Новая заявка с отправкой' : '🆕 Новая заявка'}
                 </span>
               )}
-              {order.status === 'ACTIVE' && order.closedInTelegram && !contactsShared && (
-                <span className="text-xs bg-cyan-100 text-cyan-800 px-3 py-1 rounded font-medium">
-                  ☎️ Уточнение деталей
-                </span>
-              )}
-              {order.status === 'ACTIVE' && order.closedInTelegram && contactsShared && (
-                <span className="text-xs bg-yellow-100 text-yellow-800 px-3 py-1 rounded font-medium">
-                  ⏳ В работе
+              {order.status === 'ACTIVE' &&
+                order.closedInTelegram &&
+                activeTake?.status === 'TAKEN' &&
+                !contactsShared && (
+                  <span className="text-xs bg-cyan-100 text-cyan-800 px-3 py-1 rounded font-medium">
+                    ☎️ Уточнение деталей
+                  </span>
+                )}
+              {order.status === 'ACTIVE' &&
+                order.closedInTelegram &&
+                activeTake?.status === 'TAKEN' &&
+                contactsShared && (
+                  <span className="text-xs bg-yellow-100 text-yellow-800 px-3 py-1 rounded font-medium">
+                    ⏳ В работе
+                  </span>
+                )}
+              {activeTake?.status === 'COMPLETED_PENDING' && (
+                <span className="text-xs bg-amber-100 text-amber-800 px-3 py-1 rounded font-medium">
+                  ⏳ Ждёт подтверждения
                 </span>
               )}
               {order.result === 'SUCCESS' && (
@@ -358,10 +395,13 @@ export default function OrderPage() {
           </div>
 
           <div className="text-sm text-slate-500 text-right">
-            <div>Создана: {new Date(order.createdAt).toLocaleString('ru-RU')}</div>
+            <div>
+              Создана: {new Date(order.createdAt).toLocaleString('ru-RU')}
+            </div>
             {hasGroups && (
               <div className="mt-1">
-                Отправлено в: {order.groups.map((g) => g.group.title).join(', ')}
+                Отправлено в:{' '}
+                {order.groups.map((g) => g.group.title).join(', ')}
               </div>
             )}
             {order.publishedInApp && (
@@ -376,6 +416,19 @@ export default function OrderPage() {
       {activeTake && (
         <div className="bg-white rounded-lg shadow p-6 mb-6 border-l-4 border-cyan-500">
           <h2 className="text-lg font-semibold mb-4">🚜 Исполнитель</h2>
+
+          {activeTake.status === 'COMPLETED_PENDING' && (
+            <div className="mb-4 bg-amber-50 border border-amber-200 rounded p-4">
+              <div className="font-medium text-amber-900 mb-1">
+                ⏳ Исполнитель отметил заявку как выполненную
+              </div>
+              <div className="text-sm text-amber-700">
+                Подтвердите выполнение заказа, чтобы закрыть заявку как
+                «Успешно».
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <div className="text-sm text-slate-500">Имя</div>
@@ -383,7 +436,10 @@ export default function OrderPage() {
             </div>
             <div>
               <div className="text-sm text-slate-500">Телефон</div>
-              <a href={`tel:${activeTake.owner.phone}`} className="font-medium text-green-600 hover:underline">
+              <a
+                href={`tel:${activeTake.owner.phone}`}
+                className="font-medium text-green-600 hover:underline"
+              >
                 {activeTake.owner.phone}
               </a>
             </div>
@@ -391,40 +447,71 @@ export default function OrderPage() {
               <div className="text-sm text-slate-500">Рейтинг</div>
               <div className="font-medium text-amber-600">
                 {ratingStars(activeTake.owner.rating)}{' '}
-                <span className="text-slate-900">{activeTake.owner.rating.toFixed(1)}</span>
+                <span className="text-slate-900">
+                  {activeTake.owner.rating.toFixed(1)}
+                </span>
               </div>
             </div>
             <div>
               <div className="text-sm text-slate-500">Выполнено заказов</div>
-              <div className="font-medium">{activeTake.owner.completedOrders}</div>
+              <div className="font-medium">
+                {activeTake.owner.completedOrders}
+              </div>
             </div>
             <div>
               <div className="text-sm text-slate-500">Взял</div>
-              <div className="font-medium">{formatDateTime(activeTake.takenAt)}</div>
+              <div className="font-medium">
+                {formatDateTime(activeTake.takenAt)}
+              </div>
+            </div>
+            <div>
+              <div className="text-sm text-slate-500">Статус</div>
+              <div className="font-medium">
+                {activeTake.status === 'TAKEN' && '⏳ В работе'}
+                {activeTake.status === 'COMPLETED_PENDING' &&
+                  '⏳ Ждёт подтверждения'}
+                {activeTake.status === 'DONE' && '✅ Подтверждено'}
+                {activeTake.status === 'CANCELED' && '❌ Отклонена'}
+              </div>
             </div>
           </div>
 
-          <div className="mt-4 pt-4 border-t border-slate-200">
-            {!contactsShared ? (
+          {activeTake.status === 'TAKEN' && (
+            <div className="mt-4 pt-4 border-t border-slate-200">
+              {!contactsShared ? (
+                <button
+                  type="button"
+                  onClick={handleShareContacts}
+                  disabled={saving}
+                  className="bg-blue-600 text-white px-6 py-3 rounded hover:bg-blue-700 font-medium disabled:opacity-50"
+                >
+                  📞 Поделиться контактами клиента
+                </button>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <span className="bg-green-100 text-green-700 px-4 py-2 rounded font-medium">
+                    ✅ Данные клиента отправлены
+                  </span>
+                  <span className="text-sm text-slate-500">
+                    {formatDateTime(activeTake.clientContactsSharedAt)}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTake.status === 'COMPLETED_PENDING' && (
+            <div className="mt-4 pt-4 border-t border-slate-200 flex gap-3 flex-wrap">
               <button
                 type="button"
-                onClick={handleShareContacts}
+                onClick={handleConfirmComplete}
                 disabled={saving}
-                className="bg-blue-600 text-white px-6 py-3 rounded hover:bg-blue-700 font-medium disabled:opacity-50"
+                className="bg-green-600 text-white px-6 py-3 rounded hover:bg-green-700 font-medium disabled:opacity-50"
               >
-                📞 Поделиться контактами клиента
+                ✅ Подтвердить выполнение
               </button>
-            ) : (
-              <div className="flex items-center gap-3">
-                <span className="bg-green-100 text-green-700 px-4 py-2 rounded font-medium">
-                  ✅ Данные клиента отправлены
-                </span>
-                <span className="text-sm text-slate-500">
-                  {formatDateTime(activeTake.clientContactsSharedAt)}
-                </span>
-              </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -440,7 +527,9 @@ export default function OrderPage() {
               <input
                 type="text"
                 value={order.category}
-                onChange={(e) => setOrder({ ...order, category: e.target.value })}
+                onChange={(e) =>
+                  setOrder({ ...order, category: e.target.value })
+                }
                 required
                 className="w-full border border-slate-300 rounded px-3 py-2"
               />
@@ -476,7 +565,9 @@ export default function OrderPage() {
             </div>
 
             <div className="md:col-span-2">
-              <label className="block text-sm text-slate-600 mb-1">Детали</label>
+              <label className="block text-sm text-slate-600 mb-1">
+                Детали
+              </label>
               <textarea
                 value={order.description || ''}
                 onChange={(e) =>
@@ -494,7 +585,8 @@ export default function OrderPage() {
             👤 Данные клиента (не уходят в группы и приложение)
           </h2>
           <p className="text-sm text-slate-500 mb-4">
-            Видны только диспетчеру. Исполнитель получит их после нажатия кнопки «Поделиться контактами».
+            Видны только диспетчеру. Исполнитель получит их после нажатия
+            кнопки «Поделиться контактами».
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -505,7 +597,9 @@ export default function OrderPage() {
               <input
                 type="text"
                 value={order.clientName || ''}
-                onChange={(e) => setOrder({ ...order, clientName: e.target.value })}
+                onChange={(e) =>
+                  setOrder({ ...order, clientName: e.target.value })
+                }
                 placeholder="Иван Петрович"
                 disabled={contactsShared}
                 className={`w-full border border-slate-300 rounded px-3 py-2 ${
@@ -521,7 +615,9 @@ export default function OrderPage() {
               <input
                 type="text"
                 value={order.clientPhone || ''}
-                onChange={(e) => setOrder({ ...order, clientPhone: e.target.value })}
+                onChange={(e) =>
+                  setOrder({ ...order, clientPhone: e.target.value })
+                }
                 placeholder="+7 999 123-45-67"
                 disabled={contactsShared}
                 className={`w-full border border-slate-300 rounded px-3 py-2 ${
@@ -533,7 +629,9 @@ export default function OrderPage() {
         </div>
 
         <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-semibold mb-4">Исполнитель (вручную)</h2>
+          <h2 className="text-lg font-semibold mb-4">
+            Исполнитель (вручную)
+          </h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -541,18 +639,24 @@ export default function OrderPage() {
               <input
                 type="text"
                 value={order.assigneeName || ''}
-                onChange={(e) => setOrder({ ...order, assigneeName: e.target.value })}
+                onChange={(e) =>
+                  setOrder({ ...order, assigneeName: e.target.value })
+                }
                 placeholder="Иван Петров"
                 className="w-full border border-slate-300 rounded px-3 py-2"
               />
             </div>
 
             <div>
-              <label className="block text-sm text-slate-600 mb-1">Телефон</label>
+              <label className="block text-sm text-slate-600 mb-1">
+                Телефон
+              </label>
               <input
                 type="text"
                 value={order.assigneePhone || ''}
-                onChange={(e) => setOrder({ ...order, assigneePhone: e.target.value })}
+                onChange={(e) =>
+                  setOrder({ ...order, assigneePhone: e.target.value })
+                }
                 placeholder="+7 999 123-45-67"
                 className="w-full border border-slate-300 rounded px-3 py-2"
               />
@@ -568,7 +672,9 @@ export default function OrderPage() {
                   {ownerSuggest.company && ` · ${ownerSuggest.company}`}
                   <button
                     type="button"
-                    onClick={() => setOrder({ ...order, assigneeName: ownerSuggest.name })}
+                    onClick={() =>
+                      setOrder({ ...order, assigneeName: ownerSuggest.name })
+                    }
                     className="ml-3 text-blue-600 hover:underline text-xs"
                   >
                     Подставить имя
@@ -576,6 +682,14 @@ export default function OrderPage() {
                 </div>
               </div>
             )}
+
+            {order.assigneePhone &&
+              order.assigneePhone.replace(/\D/g, '').length >= 10 &&
+              !ownerSuggest && (
+                <div className="md:col-span-2 bg-slate-50 border border-slate-200 rounded p-3 text-sm text-slate-600">
+                  Владелец с таким телефоном не найден в базе
+                </div>
+              )}
           </div>
         </div>
 
@@ -593,7 +707,9 @@ export default function OrderPage() {
                 onChange={(e) =>
                   setOrder({
                     ...order,
-                    orderAmount: e.target.value ? Number(e.target.value) : null,
+                    orderAmount: e.target.value
+                      ? Number(e.target.value)
+                      : null,
                   })
                 }
                 required
@@ -612,7 +728,9 @@ export default function OrderPage() {
                 onChange={(e) =>
                   setOrder({
                     ...order,
-                    commissionAmount: e.target.value ? Number(e.target.value) : null,
+                    commissionAmount: e.target.value
+                      ? Number(e.target.value)
+                      : null,
                   })
                 }
                 required
@@ -632,12 +750,16 @@ export default function OrderPage() {
               <input
                 type="text"
                 value={order.dispatcher}
-                onChange={(e) => setOrder({ ...order, dispatcher: e.target.value })}
+                onChange={(e) =>
+                  setOrder({ ...order, dispatcher: e.target.value })
+                }
                 className="w-full border border-slate-300 rounded px-3 py-2"
               />
             </div>
             <div>
-              <label className="block text-sm text-slate-600 mb-1">Телефон</label>
+              <label className="block text-sm text-slate-600 mb-1">
+                Телефон
+              </label>
               <input
                 type="text"
                 value={order.dispatcherPhone}
