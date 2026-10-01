@@ -16,6 +16,20 @@ export async function GET(
     include: {
       groups: { include: { group: true } },
       logs: true,
+      takes: {
+        include: {
+          owner: {
+            select: {
+              id: true,
+              name: true,
+              phone: true,
+              rating: true,
+              completedOrders: true,
+            },
+          },
+        },
+        orderBy: { takenAt: 'desc' },
+      },
     },
   });
 
@@ -43,7 +57,6 @@ export async function PATCH(
   }
 
   const body = await req.json();
-
   const data: any = {};
 
   if (body.category !== undefined) data.category = body.category;
@@ -53,6 +66,11 @@ export async function PATCH(
   if (body.dispatcher !== undefined) data.dispatcher = body.dispatcher;
   if (body.dispatcherPhone !== undefined)
     data.dispatcherPhone = body.dispatcherPhone;
+
+  if (body.clientName !== undefined)
+    data.clientName = body.clientName || null;
+  if (body.clientPhone !== undefined)
+    data.clientPhone = body.clientPhone || null;
 
   if (body.orderAmount !== undefined) {
     const n = Number(body.orderAmount);
@@ -74,13 +92,11 @@ export async function PATCH(
     data.commissionAmount = n;
   }
 
-  // Исполнитель
   if (body.assigneeName !== undefined)
     data.assigneeName = body.assigneeName || null;
   if (body.assigneePhone !== undefined)
     data.assigneePhone = body.assigneePhone || null;
 
-  // Дата/время
   if (body.startAt !== undefined) {
     const d = new Date(body.startAt);
     if (isNaN(d.getTime())) {
@@ -96,7 +112,6 @@ export async function PATCH(
     });
   }
 
-  // Автопереход в "В работе": если вписан исполнитель и заявка ещё не закрыта в поиске
   const newAssigneePhone =
     body.assigneePhone !== undefined
       ? body.assigneePhone
@@ -149,6 +164,7 @@ export async function DELETE(
 
   await prisma.messageLog.deleteMany({ where: { orderId: params.id } });
   await prisma.orderGroup.deleteMany({ where: { orderId: params.id } });
+  await prisma.orderTake.deleteMany({ where: { orderId: params.id } });
   await prisma.order.delete({ where: { id: params.id } });
 
   return NextResponse.json({ ok: true });
