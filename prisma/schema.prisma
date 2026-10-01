@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
@@ -183,16 +184,18 @@ model OrderGroup {
 }
 
 model OrderTake {
-  id           String    @id @default(cuid())
-  orderId      String
-  order        Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  ownerId      String
-  owner        Owner     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  status       String    @default("TAKEN")
-  takenAt      DateTime  @default(now())
-  canceledAt   DateTime?
-  cancelReason String?
-  ratingImpact Float?
+  id                      String    @id @default(cuid())
+  orderId                 String
+  order                   Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  ownerId                 String
+  owner                   Owner     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  status                  String    @default("TAKEN")
+  takenAt                 DateTime  @default(now())
+  canceledAt              DateTime?
+  cancelReason            String?
+  ratingImpact            Float?
+  clientContactsShared    Boolean   @default(false)
+  clientContactsSharedAt  DateTime?
 
   @@index([orderId])
   @@index([ownerId])
