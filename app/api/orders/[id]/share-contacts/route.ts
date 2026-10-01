@@ -19,6 +19,21 @@ export async function POST(
     return NextResponse.json({ error: 'Заявка не найдена' }, { status: 404 });
   }
 
+  // ❗ ПРОВЕРКА: имя и телефон клиента обязательны
+  if (!order.clientName || !order.clientName.trim()) {
+    return NextResponse.json(
+      { error: 'Заполните имя клиента, чтобы поделиться контактами' },
+      { status: 400 },
+    );
+  }
+
+  if (!order.clientPhone || !order.clientPhone.trim()) {
+    return NextResponse.json(
+      { error: 'Заполните телефон клиента, чтобы поделиться контактами' },
+      { status: 400 },
+    );
+  }
+
   const take = await prisma.orderTake.findFirst({
     where: { orderId: order.id, status: 'TAKEN' },
   });
