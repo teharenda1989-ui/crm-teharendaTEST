@@ -25,6 +25,7 @@ export default function NewOrderPage() {
   const [categories, setCategories] = useState<string[]>([]);
   const [allOwners, setAllOwners] = useState<Owner[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
+  const [cities, setCities] = useState<string[]>([]);
 
   const [category, setCategory] = useState('');
   const [city, setCity] = useState('');
@@ -34,6 +35,8 @@ export default function NewOrderPage() {
   const [dispatcherPhone, setDispatcherPhone] = useState('');
   const [orderAmount, setOrderAmount] = useState('');
   const [commissionAmount, setCommissionAmount] = useState('');
+  const [clientName, setClientName] = useState('');
+  const [clientPhone, setClientPhone] = useState('');
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [publishedInApp, setPublishedInApp] = useState(false);
 
@@ -55,11 +58,18 @@ export default function NewOrderPage() {
       .then((r) => r.json())
       .then((data: Group[]) => setGroups(data))
       .catch(() => setGroups([]));
+
+    fetch('/api/cities')
+      .then((r) => r.json())
+      .then((data: { cities: string[] }) => setCities(data.cities || []))
+      .catch(() => setCities([]));
   }, []);
 
-  const matchingOwners = category
-    ? allOwners.filter((o) =>
-        o.vehicles.some((v) => v.category === category),
+  const matchingOwners = category && city
+    ? allOwners.filter(
+        (o) =>
+          o.city === city &&
+          o.vehicles.some((v) => v.category === category),
       )
     : [];
 
@@ -87,16 +97,20 @@ export default function NewOrderPage() {
     e.preventDefault();
     setError('');
 
+    if (!category) {
+      setError('Выберите рубрику');
+      return;
+    }
+    if (!city) {
+      setError('Выберите город');
+      return;
+    }
     if (!orderAmount || Number(orderAmount) <= 0) {
       setError('Укажите сумму оборота');
       return;
     }
     if (!commissionAmount || Number(commissionAmount) <= 0) {
       setError('Укажите диспетчерские');
-      return;
-    }
-    if (publishedInApp && !city) {
-      setError('Для публикации в приложении укажите город');
       return;
     }
 
@@ -117,6 +131,8 @@ export default function NewOrderPage() {
           orderAmount: Number(orderAmount),
           commissionAmount: Number(commissionAmount),
           publishedInApp,
+          clientName: clientName.trim() || null,
+          clientPhone: clientPhone.trim() || null,
         }),
       });
 
@@ -176,14 +192,27 @@ export default function NewOrderPage() {
             </div>
 
             <div>
-              <label className="block text-sm text-slate-600 mb-1">Город</label>
-              <input
-                type="text"
+              <label className="block text-sm text-slate-600 mb-1">
+                Город <span className="text-red-500">*</span>
+              </label>
+              <select
                 value={city}
                 onChange={(e) => setCity(e.target.value)}
-                placeholder="Москва"
+                required
                 className="w-full border border-slate-300 rounded px-3 py-2"
-              />
+              >
+                <option value="">— Выберите город —</option>
+                {cities.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+              {cities.length === 0 && (
+                <p className="text-xs text-amber-600 mt-1">
+                  Нет активных партнёров с городами. Создайте партнёра.
+                </p>
+              )}
             </div>
 
             <div className="md:col-span-2">
@@ -214,6 +243,42 @@ export default function NewOrderPage() {
           </div>
         </div>
 
+        <div className="bg-white rounded-lg shadow p-6 border-l-4 border-purple-400">
+          <h2 className="text-lg font-semibold mb-2">
+            👤 Данные клиента (не уходят в группы и приложение)
+          </h2>
+          <p className="text-sm text-slate-500 mb-4">
+            Заполните, чтобы позже диспетчер мог поделиться контактами с исполнителем.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-slate-600 mb-1">
+                Имя клиента
+              </label>
+              <input
+                type="text"
+                value={clientName}
+                onChange={(e) => setClientName(e.target.value)}
+                placeholder="Иван Петрович"
+                className="w-full border border-slate-300 rounded px-3 py-2"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-slate-600 mb-1">
+                Телефон клиента
+              </label>
+              <input
+                type="text"
+                value={clientPhone}
+                onChange={(e) => setClientPhone(e.target.value)}
+                placeholder="+7 999 123-45-67"
+                className="w-full border border-slate-300 rounded px-3 py-2"
+              />
+            </div>
+          </div>
+        </div>
+
         <div className="bg-white rounded-lg shadow p-6">
           <h2 className="text-lg font-semibold mb-2">Финансы</h2>
           <p className="text-sm text-slate-500 mb-4">Обязательные поля.</p>
@@ -233,7 +298,6 @@ export default function NewOrderPage() {
                 className="w-full border border-slate-300 rounded px-3 py-2"
               />
             </div>
-
             <div>
               <label className="block text-sm text-slate-600 mb-1">
                 📊 Диспетчерские, ₽ <span className="text-red-500">*</span>
@@ -284,7 +348,6 @@ export default function NewOrderPage() {
           </div>
         </div>
 
-        {/* МОБИЛЬНОЕ ПРИЛОЖЕНИЕ */}
         <div className="bg-white rounded-lg shadow p-6">
           <h2 className="text-lg font-semibold mb-2">Мобильное приложение</h2>
           <p className="text-sm text-slate-500 mb-4">
@@ -303,7 +366,7 @@ export default function NewOrderPage() {
               <div className="font-medium">📱 Опубликовать в приложении</div>
               <div className="text-sm text-slate-500">
                 {!city
-                  ? 'Укажите город выше, чтобы активировать'
+                  ? 'Выберите город выше, чтобы активировать'
                   : `Push получат владельцы с рубрикой «${category || '—'}» в городе «${city}»`}
               </div>
             </div>
@@ -408,31 +471,29 @@ export default function NewOrderPage() {
           )}
         </div>
 
-        {category && (
+        {matchingOwners.length > 0 && (
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-lg font-semibold mb-2">
               Подходящие владельцы ({matchingOwners.length})
             </h2>
-            <p className="text-sm text-slate-500 mb-4">Справочно.</p>
+            <p className="text-sm text-slate-500 mb-4">
+              Получат push-уведомление, если включена публикация.
+            </p>
 
-            {matchingOwners.length === 0 ? (
-              <p className="text-slate-500">Нет владельцев с такой рубрикой.</p>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {matchingOwners.map((o) => (
-                  <div
-                    key={o.id}
-                    className="border border-slate-200 rounded p-3 text-sm"
-                  >
-                    <div className="font-medium">{o.name}</div>
-                    {o.company && (
-                      <div className="text-slate-500">{o.company}</div>
-                    )}
-                    <div className="text-slate-500">📞 {o.phone}</div>
-                  </div>
-                ))}
-              </div>
-            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {matchingOwners.map((o) => (
+                <div
+                  key={o.id}
+                  className="border border-slate-200 rounded p-3 text-sm"
+                >
+                  <div className="font-medium">{o.name}</div>
+                  {o.company && (
+                    <div className="text-slate-500">{o.company}</div>
+                  )}
+                  <div className="text-slate-500">📞 {o.phone}</div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
