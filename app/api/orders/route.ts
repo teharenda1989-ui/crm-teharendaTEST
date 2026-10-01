@@ -50,6 +50,8 @@ export async function POST(req: NextRequest) {
     orderAmount,
     commissionAmount,
     publishedInApp,
+    clientName,
+    clientPhone,
   } = body;
 
   if (!category)
@@ -104,6 +106,8 @@ export async function POST(req: NextRequest) {
       commissionAmount: Number(commissionAmount),
       partnerId: scope.partnerId,
       publishedInApp: !!publishedInApp,
+      clientName: clientName ? String(clientName).trim() : null,
+      clientPhone: clientPhone ? String(clientPhone).trim() : null,
       groups: validGroupIds.length
         ? { create: validGroupIds.map((groupId) => ({ groupId })) }
         : undefined,
@@ -115,7 +119,7 @@ export async function POST(req: NextRequest) {
     try {
       await sendPushToOwners(city, category, {
         title: 'Новая заявка',
-        body: `${category} — ${city}. Сумма: ${Number(orderAmount).toLocaleString('ru-RU')} ₽`,
+        body: `${category} — ${city}`,
         orderId: order.id,
       });
     } catch (e) {
@@ -132,7 +136,11 @@ export async function POST(req: NextRequest) {
   for (const og of order.groups) {
     const group = og.group;
     if (!group.isActive) {
-      sendResults.push({ title: group.title, ok: false, error: 'Группа выключена' });
+      sendResults.push({
+        title: group.title,
+        ok: false,
+        error: 'Группа выключена',
+      });
       continue;
     }
 
@@ -141,7 +149,12 @@ export async function POST(req: NextRequest) {
 
     if (group.messenger === 'max') {
       messageText = buildOrderMessageMax({
-        category, city, when: whenText, description, dispatcher, dispatcherPhone,
+        category,
+        city,
+        when: whenText,
+        description,
+        dispatcher,
+        dispatcherPhone,
       });
       const token = await getMaxTokenForPartner(group.partnerId);
       result = token
@@ -149,7 +162,12 @@ export async function POST(req: NextRequest) {
         : { ok: false, error: 'MAX-токен не настроен' };
     } else {
       messageText = buildOrderMessage({
-        category, city, when: whenText, description, dispatcher, dispatcherPhone,
+        category,
+        city,
+        when: whenText,
+        description,
+        dispatcher,
+        dispatcherPhone,
       });
       result = await sendToTelegram(group.chatId, messageText);
     }
