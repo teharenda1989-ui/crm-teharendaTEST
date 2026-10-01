@@ -35,7 +35,9 @@ export default async function OrdersPage({ searchParams }: Props) {
     include: {
       groups: { include: { group: true } },
       takes: {
-        where: { status: 'TAKEN' },
+        where: {
+          status: { in: ['TAKEN', 'COMPLETED_PENDING'] },
+        },
         orderBy: { takenAt: 'desc' },
         take: 1,
       },
@@ -89,8 +91,7 @@ export default async function OrdersPage({ searchParams }: Props) {
         <div className="flex flex-col gap-3">
           {orders.map((order) => {
             const isFullyClosed = order.status === 'CLOSED';
-            const isInWork =
-              order.status === 'ACTIVE' && order.closedInTelegram;
+            const isInWork = order.status === 'ACTIVE' && order.closedInTelegram;
             const hasGroups = order.groups.length > 0;
             const isNewWithSend =
               order.status === 'ACTIVE' && !order.closedInTelegram && hasGroups;
@@ -99,6 +100,7 @@ export default async function OrdersPage({ searchParams }: Props) {
 
             const activeTake = order.takes[0];
             const contactsShared = activeTake?.clientContactsShared ?? false;
+            const isPending = activeTake?.status === 'COMPLETED_PENDING';
 
             return (
               <Link
@@ -111,6 +113,8 @@ export default async function OrdersPage({ searchParams }: Props) {
                     ? 'bg-blue-50 border-l-blue-500'
                     : isNewNoSend
                     ? 'bg-white border-l-slate-300'
+                    : isPending
+                    ? 'bg-amber-50 border-l-amber-400'
                     : contactsShared
                     ? 'bg-white border-l-yellow-400'
                     : 'bg-cyan-50 border-l-cyan-400'
@@ -142,14 +146,23 @@ export default async function OrdersPage({ searchParams }: Props) {
                           🆕 Новая заявка
                         </span>
                       )}
-                      {isInWork && !contactsShared && (
-                        <span className="text-xs bg-cyan-100 text-cyan-800 px-2 py-1 rounded font-medium">
-                          ☎️ Уточнение деталей
-                        </span>
-                      )}
-                      {isInWork && contactsShared && (
-                        <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded font-medium">
-                          ⏳ В работе
+                      {isInWork &&
+                        activeTake?.status === 'TAKEN' &&
+                        !contactsShared && (
+                          <span className="text-xs bg-cyan-100 text-cyan-800 px-2 py-1 rounded font-medium">
+                            ☎️ Уточнение деталей
+                          </span>
+                        )}
+                      {isInWork &&
+                        activeTake?.status === 'TAKEN' &&
+                        contactsShared && (
+                          <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded font-medium">
+                            ⏳ В работе
+                          </span>
+                        )}
+                      {isPending && (
+                        <span className="text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded font-medium">
+                          ⏳ Ждёт подтверждения
                         </span>
                       )}
                       {order.publishedInApp && (
