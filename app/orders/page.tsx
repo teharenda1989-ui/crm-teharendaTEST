@@ -27,15 +27,25 @@ export default async function OrdersPage({ searchParams }: Props) {
     statusFilter = { status: 'CLOSED', result: 'SUCCESS' };
   else if (filter === 'fail')
     statusFilter = { status: 'CLOSED', result: 'FAIL' };
+  else if (filter === 'details')
+    statusFilter = { status: 'ACTIVE', closedInTelegram: true };
 
   const orders = await prisma.order.findMany({
     where: { ...scopeWhere(scope), ...statusFilter },
-    include: { groups: { include: { group: true } } },
+    include: {
+      groups: { include: { group: true } },
+      takes: {
+        where: { status: 'TAKEN' },
+        orderBy: { takenAt: 'desc' },
+        take: 1,
+      },
+    },
     orderBy: { createdAt: 'desc' },
   });
 
   const tabs = [
     { key: 'active', label: '🟢 Активные' },
+    { key: 'details', label: '☎️ Уточнение деталей' },
     { key: 'success', label: '✅ Успешные' },
     { key: 'fail', label: '❌ Без сделки' },
     { key: 'all', label: '📋 Все' },
@@ -87,6 +97,9 @@ export default async function OrdersPage({ searchParams }: Props) {
             const isNewNoSend =
               order.status === 'ACTIVE' && !order.closedInTelegram && !hasGroups;
 
+            const activeTake = order.takes[0];
+            const contactsShared = activeTake?.clientContactsShared ?? false;
+
             return (
               <Link
                 key={order.id}
@@ -98,7 +111,9 @@ export default async function OrdersPage({ searchParams }: Props) {
                     ? 'bg-blue-50 border-l-blue-500'
                     : isNewNoSend
                     ? 'bg-white border-l-slate-300'
-                    : 'bg-white border-l-yellow-400'
+                    : contactsShared
+                    ? 'bg-white border-l-yellow-400'
+                    : 'bg-cyan-50 border-l-cyan-400'
                 }`}
               >
                 <div className="flex justify-between items-start gap-4">
@@ -127,9 +142,19 @@ export default async function OrdersPage({ searchParams }: Props) {
                           🆕 Новая заявка
                         </span>
                       )}
-                      {isInWork && (
+                      {isInWork && !contactsShared && (
+                        <span className="text-xs bg-cyan-100 text-cyan-800 px-2 py-1 rounded font-medium">
+                          ☎️ Уточнение деталей
+                        </span>
+                      )}
+                      {isInWork && contactsShared && (
                         <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded font-medium">
                           ⏳ В работе
+                        </span>
+                      )}
+                      {order.publishedInApp && (
+                        <span className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded font-medium">
+                          📱 В приложении
                         </span>
                       )}
                       {order.result === 'SUCCESS' && (
@@ -139,7 +164,7 @@ export default async function OrdersPage({ searchParams }: Props) {
                       )}
                       {order.result === 'FAIL' && (
                         <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded font-medium">
-                          ❌ Без сделки
+                          ❌ Отклонена
                         </span>
                       )}
                     </div>
