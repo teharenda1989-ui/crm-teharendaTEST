@@ -4,6 +4,23 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 
+interface OrderTake {
+  id: string;
+  status: string;
+  takenAt: string;
+  canceledAt: string | null;
+  cancelReason: string | null;
+  clientContactsShared: boolean;
+  clientContactsSharedAt: string | null;
+  owner: {
+    id: string;
+    name: string;
+    phone: string;
+    rating: number;
+    completedOrders: number;
+  };
+}
+
 interface Order {
   id: string;
   category: string;
@@ -20,8 +37,12 @@ interface Order {
   assigneePhone: string | null;
   orderAmount: number | null;
   commissionAmount: number | null;
+  clientName: string | null;
+  clientPhone: string | null;
+  publishedInApp: boolean;
   createdAt: string;
   groups: { group: { title: string; chatId: string } }[];
+  takes: OrderTake[];
 }
 
 interface Owner {
@@ -40,6 +61,17 @@ function toLocalDatetime(iso: string | null): string {
   )}:${pad(d.getMinutes())}`;
 }
 
+function formatDateTime(iso: string | null): string {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 export default function OrderPage() {
   const router = useRouter();
   const params = useParams();
@@ -54,7 +86,6 @@ export default function OrderPage() {
   const [owners, setOwners] = useState<Owner[]>([]);
   const [ownerSuggest, setOwnerSuggest] = useState<Owner | null>(null);
 
-  // Загружаем заявку
   const reloadOrder = async () => {
     const r = await fetch(`/api/orders/${id}`);
     if (r.ok) {
@@ -89,7 +120,6 @@ export default function OrderPage() {
     setOwnerSuggest(found || null);
   }, [order?.assigneePhone, owners]);
 
-  // Сохранить заявку — после успеха перейти к списку
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!order) return;
@@ -113,6 +143,8 @@ export default function OrderPage() {
           orderAmount: order.orderAmount,
           commissionAmount: order.commissionAmount,
           startAt: order.startAt,
+          clientName: order.clientName,
+          clientPhone: order.clientPhone,
         }),
       });
 
@@ -120,7 +152,6 @@ export default function OrderPage() {
       if (!res.ok) throw new Error(data.error || 'Ошибка');
       setSaved(true);
 
-      // Переходим ко всем заявкам
       router.push('/orders');
       router.refresh();
     } catch (e: any) {
@@ -130,7 +161,24 @@ export default function OrderPage() {
     }
   };
 
-  // Закрыть поиск в Telegram — остаёмся на этой же странице
+  const handleShareContacts = async () => {
+    if (!confirm('Поделиться контактами клиента с исполнителем?')) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/orders/${id}/share-contacts`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Ошибка');
+      await reloadOrder();
+      alert('✅ Контакты отправлены исполнителю');
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleCloseSearch = async () => {
     if (!order) return;
 
@@ -149,7 +197,6 @@ export default function OrderPage() {
         return;
     }
 
-    // Сначала сохраняем текущие изменения
     try {
       await fetch(`/api/orders/${id}`, {
         method: 'PATCH',
@@ -165,6 +212,8 @@ export default function OrderPage() {
           orderAmount: order.orderAmount,
           commissionAmount: order.commissionAmount,
           startAt: order.startAt,
+          clientName: order.clientName,
+          clientPhone: order.clientPhone,
         }),
       });
     } catch {}
@@ -174,7 +223,6 @@ export default function OrderPage() {
       const res = await fetch(`/api/orders/${id}/close`, { method: 'POST' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Ошибка');
-      // Остаёмся на этой же странице — просто обновляем данные
       await reloadOrder();
     } catch (e: any) {
       setError(e.message);
@@ -198,7 +246,6 @@ export default function OrderPage() {
     }
   };
 
-  // Завершить заявку (успех/без сделки) — перейти к списку
   const handleComplete = async (result: 'SUCCESS' | 'FAIL') => {
     const text =
       result === 'SUCCESS'
@@ -244,9 +291,17 @@ export default function OrderPage() {
   const hasGroups = order.groups.length > 0;
   const canCloseSearch =
     order.status === 'ACTIVE' && hasGroups && !order.closedInTelegram;
-  const canComplete =
-    order.status === 'ACTIVE' &&
-    (!hasGroups || order.closedInTelegram);
+  const canComplete = order.status === 'ACTIVE' && (!hasGroups || order.closedInTelegram);
+
+  const activeTake = order.takes?.find((t) => t.status === 'TAKEN');
+  const hasTaken = !!activeTake;
+  const contactsShared = activeTake?.clientContactsShared ?? false;
+
+  const ratingStars = (rating: number) => {
+    const full = Math.floor(rating);
+    const half = rating - full >= 0.5;
+    return '★'.repeat(full) + (half ? '⯨' : '') + '☆'.repeat(5 - full - (half ? 1 : 0));
+  };
 
   return (
     <div className="max-w-4xl">
@@ -279,20 +334,16 @@ export default function OrderPage() {
                   {hasGroups ? '🆕 Новая заявка с отправкой' : '🆕 Новая заявка'}
                 </span>
               )}
-              {order.status === 'ACTIVE' &&
-                order.closedInTelegram &&
-                order.assigneeName && (
-                  <span className="text-xs bg-yellow-100 text-yellow-800 px-3 py-1 rounded font-medium">
-                    ⏳ В работе
-                  </span>
-                )}
-              {order.status === 'ACTIVE' &&
-                order.closedInTelegram &&
-                !order.assigneeName && (
-                  <span className="text-xs bg-orange-100 text-orange-800 px-3 py-1 rounded font-medium">
-                    ⏳ В работе · исполнитель не указан
-                  </span>
-                )}
+              {order.status === 'ACTIVE' && order.closedInTelegram && !contactsShared && (
+                <span className="text-xs bg-cyan-100 text-cyan-800 px-3 py-1 rounded font-medium">
+                  ☎️ Уточнение деталей
+                </span>
+              )}
+              {order.status === 'ACTIVE' && order.closedInTelegram && contactsShared && (
+                <span className="text-xs bg-yellow-100 text-yellow-800 px-3 py-1 rounded font-medium">
+                  ⏳ В работе
+                </span>
+              )}
               {order.result === 'SUCCESS' && (
                 <span className="text-xs bg-green-100 text-green-700 px-3 py-1 rounded font-medium">
                   ✅ Успешно
@@ -300,30 +351,82 @@ export default function OrderPage() {
               )}
               {order.result === 'FAIL' && (
                 <span className="text-xs bg-red-100 text-red-700 px-3 py-1 rounded font-medium">
-                  ❌ Без сделки
+                  ❌ Отклонена
                 </span>
               )}
             </div>
           </div>
 
           <div className="text-sm text-slate-500 text-right">
-            <div>
-              Создана: {new Date(order.createdAt).toLocaleString('ru-RU')}
-            </div>
+            <div>Создана: {new Date(order.createdAt).toLocaleString('ru-RU')}</div>
             {hasGroups && (
               <div className="mt-1">
-                Отправлено в:{' '}
-                {order.groups.map((g) => g.group.title).join(', ')}
+                Отправлено в: {order.groups.map((g) => g.group.title).join(', ')}
               </div>
             )}
-            {!hasGroups && (
-              <div className="mt-1 text-slate-400">
-                Без рассылки в Telegram
+            {order.publishedInApp && (
+              <div className="mt-1 text-orange-600 font-medium">
+                📱 Опубликовано в приложении
               </div>
             )}
           </div>
         </div>
       </div>
+
+      {activeTake && (
+        <div className="bg-white rounded-lg shadow p-6 mb-6 border-l-4 border-cyan-500">
+          <h2 className="text-lg font-semibold mb-4">🚜 Исполнитель</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <div className="text-sm text-slate-500">Имя</div>
+              <div className="font-medium">{activeTake.owner.name}</div>
+            </div>
+            <div>
+              <div className="text-sm text-slate-500">Телефон</div>
+              <a href={`tel:${activeTake.owner.phone}`} className="font-medium text-green-600 hover:underline">
+                {activeTake.owner.phone}
+              </a>
+            </div>
+            <div>
+              <div className="text-sm text-slate-500">Рейтинг</div>
+              <div className="font-medium text-amber-600">
+                {ratingStars(activeTake.owner.rating)}{' '}
+                <span className="text-slate-900">{activeTake.owner.rating.toFixed(1)}</span>
+              </div>
+            </div>
+            <div>
+              <div className="text-sm text-slate-500">Выполнено заказов</div>
+              <div className="font-medium">{activeTake.owner.completedOrders}</div>
+            </div>
+            <div>
+              <div className="text-sm text-slate-500">Взял</div>
+              <div className="font-medium">{formatDateTime(activeTake.takenAt)}</div>
+            </div>
+          </div>
+
+          <div className="mt-4 pt-4 border-t border-slate-200">
+            {!contactsShared ? (
+              <button
+                type="button"
+                onClick={handleShareContacts}
+                disabled={saving}
+                className="bg-blue-600 text-white px-6 py-3 rounded hover:bg-blue-700 font-medium disabled:opacity-50"
+              >
+                📞 Поделиться контактами клиента
+              </button>
+            ) : (
+              <div className="flex items-center gap-3">
+                <span className="bg-green-100 text-green-700 px-4 py-2 rounded font-medium">
+                  ✅ Данные клиента отправлены
+                </span>
+                <span className="text-sm text-slate-500">
+                  {formatDateTime(activeTake.clientContactsSharedAt)}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <form onSubmit={handleSave} className="flex flex-col gap-6">
         <div className="bg-white rounded-lg shadow p-6">
@@ -337,18 +440,14 @@ export default function OrderPage() {
               <input
                 type="text"
                 value={order.category}
-                onChange={(e) =>
-                  setOrder({ ...order, category: e.target.value })
-                }
+                onChange={(e) => setOrder({ ...order, category: e.target.value })}
                 required
                 className="w-full border border-slate-300 rounded px-3 py-2"
               />
             </div>
 
             <div>
-              <label className="block text-sm text-slate-600 mb-1">
-                Город
-              </label>
+              <label className="block text-sm text-slate-600 mb-1">Город</label>
               <input
                 type="text"
                 value={order.city || ''}
@@ -377,9 +476,7 @@ export default function OrderPage() {
             </div>
 
             <div className="md:col-span-2">
-              <label className="block text-sm text-slate-600 mb-1">
-                Детали
-              </label>
+              <label className="block text-sm text-slate-600 mb-1">Детали</label>
               <textarea
                 value={order.description || ''}
                 onChange={(e) =>
@@ -392,8 +489,51 @@ export default function OrderPage() {
           </div>
         </div>
 
+        <div className="bg-white rounded-lg shadow p-6 border-l-4 border-purple-400">
+          <h2 className="text-lg font-semibold mb-2">
+            👤 Данные клиента (не уходят в группы и приложение)
+          </h2>
+          <p className="text-sm text-slate-500 mb-4">
+            Видны только диспетчеру. Исполнитель получит их после нажатия кнопки «Поделиться контактами».
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-slate-600 mb-1">
+                Имя клиента
+              </label>
+              <input
+                type="text"
+                value={order.clientName || ''}
+                onChange={(e) => setOrder({ ...order, clientName: e.target.value })}
+                placeholder="Иван Петрович"
+                disabled={contactsShared}
+                className={`w-full border border-slate-300 rounded px-3 py-2 ${
+                  contactsShared ? 'bg-slate-100 text-slate-500' : ''
+                }`}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm text-slate-600 mb-1">
+                Телефон клиента
+              </label>
+              <input
+                type="text"
+                value={order.clientPhone || ''}
+                onChange={(e) => setOrder({ ...order, clientPhone: e.target.value })}
+                placeholder="+7 999 123-45-67"
+                disabled={contactsShared}
+                className={`w-full border border-slate-300 rounded px-3 py-2 ${
+                  contactsShared ? 'bg-slate-100 text-slate-500' : ''
+                }`}
+              />
+            </div>
+          </div>
+        </div>
+
         <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-semibold mb-4">Исполнитель</h2>
+          <h2 className="text-lg font-semibold mb-4">Исполнитель (вручную)</h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -401,24 +541,18 @@ export default function OrderPage() {
               <input
                 type="text"
                 value={order.assigneeName || ''}
-                onChange={(e) =>
-                  setOrder({ ...order, assigneeName: e.target.value })
-                }
+                onChange={(e) => setOrder({ ...order, assigneeName: e.target.value })}
                 placeholder="Иван Петров"
                 className="w-full border border-slate-300 rounded px-3 py-2"
               />
             </div>
 
             <div>
-              <label className="block text-sm text-slate-600 mb-1">
-                Телефон
-              </label>
+              <label className="block text-sm text-slate-600 mb-1">Телефон</label>
               <input
                 type="text"
                 value={order.assigneePhone || ''}
-                onChange={(e) =>
-                  setOrder({ ...order, assigneePhone: e.target.value })
-                }
+                onChange={(e) => setOrder({ ...order, assigneePhone: e.target.value })}
                 placeholder="+7 999 123-45-67"
                 className="w-full border border-slate-300 rounded px-3 py-2"
               />
@@ -434,9 +568,7 @@ export default function OrderPage() {
                   {ownerSuggest.company && ` · ${ownerSuggest.company}`}
                   <button
                     type="button"
-                    onClick={() =>
-                      setOrder({ ...order, assigneeName: ownerSuggest.name })
-                    }
+                    onClick={() => setOrder({ ...order, assigneeName: ownerSuggest.name })}
                     className="ml-3 text-blue-600 hover:underline text-xs"
                   >
                     Подставить имя
@@ -444,14 +576,6 @@ export default function OrderPage() {
                 </div>
               </div>
             )}
-
-            {order.assigneePhone &&
-              order.assigneePhone.replace(/\D/g, '').length >= 10 &&
-              !ownerSuggest && (
-                <div className="md:col-span-2 bg-slate-50 border border-slate-200 rounded p-3 text-sm text-slate-600">
-                  Владелец с таким телефоном не найден в базе
-                </div>
-              )}
           </div>
         </div>
 
@@ -469,9 +593,7 @@ export default function OrderPage() {
                 onChange={(e) =>
                   setOrder({
                     ...order,
-                    orderAmount: e.target.value
-                      ? Number(e.target.value)
-                      : null,
+                    orderAmount: e.target.value ? Number(e.target.value) : null,
                   })
                 }
                 required
@@ -490,9 +612,7 @@ export default function OrderPage() {
                 onChange={(e) =>
                   setOrder({
                     ...order,
-                    commissionAmount: e.target.value
-                      ? Number(e.target.value)
-                      : null,
+                    commissionAmount: e.target.value ? Number(e.target.value) : null,
                   })
                 }
                 required
@@ -512,16 +632,12 @@ export default function OrderPage() {
               <input
                 type="text"
                 value={order.dispatcher}
-                onChange={(e) =>
-                  setOrder({ ...order, dispatcher: e.target.value })
-                }
+                onChange={(e) => setOrder({ ...order, dispatcher: e.target.value })}
                 className="w-full border border-slate-300 rounded px-3 py-2"
               />
             </div>
             <div>
-              <label className="block text-sm text-slate-600 mb-1">
-                Телефон
-              </label>
+              <label className="block text-sm text-slate-600 mb-1">Телефон</label>
               <input
                 type="text"
                 value={order.dispatcherPhone}
