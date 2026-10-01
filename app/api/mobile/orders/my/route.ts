@@ -30,7 +30,9 @@ export async function GET(req: NextRequest) {
     orderBy: { takenAt: 'desc' },
   });
 
-  const inWork = takes.filter((t) => t.status === 'TAKEN');
+  const inWork = takes.filter(
+    (t) => t.status === 'TAKEN' || t.status === 'COMPLETED_PENDING',
+  );
   const completed = takes.filter(
     (t) => t.status === 'DONE' || t.status === 'CANCELED',
   );
