@@ -5,9 +5,9 @@ import { createMobileToken } from '@/lib/mobile-auth';
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { email, password, name, phone, city, company } = body;
+  const { email, password, name, phone, company } = body;
 
-  if (!email || !password || !name || !phone || !city) {
+  if (!email || !password || !name || !phone) {
     return NextResponse.json(
       { error: 'Заполните все обязательные поля' },
       { status: 400 },
@@ -28,7 +28,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Неверный телефон' }, { status: 400 });
   }
 
-  // Проверка занятости email
   const existing = await prisma.user.findUnique({
     where: { email: normalizedEmail },
   });
@@ -36,18 +35,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { error: 'Email уже зарегистрирован' },
       { status: 409 },
-    );
-  }
-
-  // Ищем партнёра по городу
-  const partner = await prisma.partner.findFirst({
-    where: { city: String(city).trim() },
-  });
-
-  if (!partner) {
-    return NextResponse.json(
-      { error: 'В этом городе пока нет партнёра' },
-      { status: 404 },
     );
   }
 
@@ -63,14 +50,13 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // Регистрационная карточка — привязки к партнёру нет
     const owner = await tx.owner.create({
       data: {
         name: String(name).trim(),
         phone: normalizedPhone,
         email: normalizedEmail,
         company: company ? String(company).trim() : null,
-        city: partner.city,
-        partnerId: partner.id,
         userId: user.id,
         isRegistered: true,
         isOnShift: true,
