@@ -16,8 +16,9 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const isOnShift = !!body.isOnShift;
 
-  await prisma.owner.update({
-    where: { id: session.ownerId },
+  // Обновляем у ВСЕХ карточек Owner этого User
+  await prisma.owner.updateMany({
+    where: { userId: session.userId },
     data: { isOnShift },
   });
 
