@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
 
   const user = await prisma.user.findUnique({
     where: { email: normalizedEmail },
-    include: { owner: true },
+    include: { owners: { orderBy: { createdAt: 'asc' } } },
   });
 
   if (!user || user.role !== 'OWNER') {
@@ -40,12 +40,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (!user.owner) {
+  if (!user.owners.length) {
     return NextResponse.json(
       { error: 'Профиль владельца не найден' },
       { status: 400 },
     );
   }
+
+  const primaryOwner = user.owners[0];
 
   await prisma.user.update({
     where: { id: user.id },
@@ -54,7 +56,7 @@ export async function POST(req: NextRequest) {
 
   const token = await createMobileToken({
     userId: user.id,
-    ownerId: user.owner.id,
+    ownerId: primaryOwner.id,
     email: user.email,
     role: 'OWNER',
   });
@@ -64,9 +66,9 @@ export async function POST(req: NextRequest) {
     token,
     user: { id: user.id, email: user.email, name: user.name },
     owner: {
-      id: user.owner.id,
-      city: user.owner.city,
-      rating: user.owner.rating,
+      id: primaryOwner.id,
+      city: primaryOwner.city,
+      rating: primaryOwner.rating,
     },
   });
 }
