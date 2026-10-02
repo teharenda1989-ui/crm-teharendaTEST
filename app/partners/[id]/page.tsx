@@ -18,6 +18,7 @@ interface Partner {
   email: string | null;
   phone: string | null;
   city: string | null;
+  cities: string[];
   royaltyPercent: number;
   isActive: boolean;
   comment: string | null;
@@ -42,17 +43,45 @@ export default function PartnerPage() {
 
   const [showToken, setShowToken] = useState(false);
 
+  // Города
+  const [allCities, setAllCities] = useState<string[]>([]);
+  const [selectedCity, setSelectedCity] = useState('');
+
   const load = () => {
     setLoading(true);
     fetch(`/api/partners/${id}`)
       .then((r) => r.json())
-      .then((data) => setPartner(data))
+      .then((data) => {
+        // На случай, если cities не массив
+        const cities = Array.isArray(data.cities) ? data.cities : [];
+        setPartner({ ...data, cities });
+      })
       .catch(() => setError('Не удалось загрузить партнёра'))
       .finally(() => setLoading(false));
   };
 
+  const loadAllCities = () => {
+    // Получаем все города из всех партнёров (SUPER_ADMIN видит все)
+    fetch('/api/partners')
+      .then((r) => r.json())
+      .then((data: any[]) => {
+        const set = new Set<string>();
+        data.forEach((p) => {
+          if (p.city && p.city.trim()) set.add(p.city.trim());
+          if (Array.isArray(p.cities)) {
+            p.cities.forEach((c: string) => {
+              if (c && c.trim()) set.add(c.trim());
+            });
+          }
+        });
+        setAllCities(Array.from(set).sort());
+      })
+      .catch(() => setAllCities([]));
+  };
+
   useEffect(() => {
     load();
+    loadAllCities();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
@@ -72,6 +101,7 @@ export default function PartnerPage() {
           name: partner.name,
           phone: partner.phone,
           city: partner.city,
+          cities: partner.cities,
           royaltyPercent: partner.royaltyPercent,
           comment: partner.comment,
           isActive: partner.isActive,
@@ -85,6 +115,7 @@ export default function PartnerPage() {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
       load();
+      loadAllCities();
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -137,6 +168,29 @@ export default function PartnerPage() {
     }
   };
 
+  // Города: добавить
+  const handleAddCity = () => {
+    if (!partner || !selectedCity) return;
+    if (partner.cities.includes(selectedCity)) {
+      setSelectedCity('');
+      return;
+    }
+    setPartner({
+      ...partner,
+      cities: [...partner.cities, selectedCity].sort(),
+    });
+    setSelectedCity('');
+  };
+
+  // Города: удалить
+  const handleRemoveCity = (city: string) => {
+    if (!partner) return;
+    setPartner({
+      ...partner,
+      cities: partner.cities.filter((c) => c !== city),
+    });
+  };
+
   if (loading) {
     return <div className="text-slate-500">Загрузка...</div>;
   }
@@ -144,6 +198,11 @@ export default function PartnerPage() {
   if (!partner) {
     return <div className="text-slate-500">Партнёр не найден</div>;
   }
+
+  // Города, которые можно добавить (которых ещё нет у партнёра)
+  const availableToAdd = allCities.filter(
+    (c) => !partner.cities.includes(c),
+  );
 
   return (
     <div className="max-w-3xl">
@@ -186,15 +245,21 @@ export default function PartnerPage() {
             </div>
 
             <div>
-              <label className="block text-sm text-slate-600 mb-1">Город</label>
+              <label className="block text-sm text-slate-600 mb-1">
+                Основной город
+              </label>
               <input
                 type="text"
                 value={partner.city || ''}
                 onChange={(e) =>
                   setPartner({ ...partner, city: e.target.value })
                 }
+                placeholder="Новосибирск"
                 className="w-full border border-slate-300 rounded px-3 py-2"
               />
+              <p className="text-xs text-slate-400 mt-1">
+                Отображается как основной. Полный список городов ниже.
+              </p>
             </div>
 
             <div>
@@ -245,6 +310,81 @@ export default function PartnerPage() {
           </div>
         </div>
 
+        {/* ГОРОДА ПАРТНЁРА */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold mb-2">🏙 Города партнёра</h2>
+          <p className="text-sm text-slate-500 mb-4">
+            Партнёр сможет создавать заявки по этим городам. Исполнители
+            мобильного приложения, указавшие один из этих городов, будут
+            получать его заявки.
+          </p>
+
+          {partner.cities.length === 0 ? (
+            <div className="text-sm text-slate-500 mb-4">
+              Пока нет городов. Добавьте ниже.
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-2 mb-4">
+              {partner.cities.map((c) => (
+                <span
+                  key={c}
+                  className="inline-flex items-center gap-2 bg-orange-100 text-orange-800 px-3 py-1.5 rounded-full text-sm font-medium"
+                >
+                  {c}
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveCity(c)}
+                    className="text-orange-600 hover:text-orange-900 font-bold"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <select
+              value={selectedCity}
+              onChange={(e) => setSelectedCity(e.target.value)}
+              className="flex-1 border border-slate-300 rounded px-3 py-2"
+            >
+              <option value="">— Выберите город для добавления —</option>
+              {availableToAdd.length === 0 ? (
+                <option value="" disabled>
+                  Нет доступных городов
+                </option>
+              ) : (
+                availableToAdd.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))
+              )}
+            </select>
+            <button
+              type="button"
+              onClick={handleAddCity}
+              disabled={!selectedCity}
+              className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 disabled:opacity-50"
+            >
+              + Добавить
+            </button>
+          </div>
+
+          {availableToAdd.length === 0 && allCities.length > 0 && (
+            <p className="text-xs text-slate-400 mt-2">
+              Все существующие города уже добавлены. Чтобы добавить новый
+              город — создайте партнёра с этим городом.
+            </p>
+          )}
+
+          <p className="text-xs text-slate-400 mt-3">
+            Не забудьте нажать <b>«Сохранить»</b> внизу, чтобы применить
+            изменения.
+          </p>
+        </div>
+
         {/* MAX Bot Token */}
         <div className="bg-white rounded-lg shadow p-6">
           <h2 className="text-lg font-semibold mb-2">
@@ -252,8 +392,8 @@ export default function PartnerPage() {
           </h2>
           <p className="text-sm text-slate-500 mb-4">
             Партнёр создаёт своего бота в MAX для партнёров, присылает вам
-            токен. Вставьте его сюда — заявки партнёра будут уходить в MAX
-            от имени <b>его</b> бота. Если поле пустое — используется общий бот.
+            токен. Вставьте его сюда — заявки партнёра будут уходить в MAX от
+            имени <b>его</b> бота. Если поле пустое — используется общий бот.
           </p>
 
           <div className="flex gap-2">
@@ -286,7 +426,10 @@ export default function PartnerPage() {
           ) : (
             <div className="flex flex-col gap-3">
               {partner.users.map((u) => (
-                <div key={u.id} className="border border-slate-200 rounded p-4">
+                <div
+                  key={u.id}
+                  className="border border-slate-200 rounded p-4"
+                >
                   <div className="flex justify-between items-center flex-wrap gap-2">
                     <div>
                       <div className="font-medium">{u.name}</div>
