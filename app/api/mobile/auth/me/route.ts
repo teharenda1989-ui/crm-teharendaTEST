@@ -15,29 +15,40 @@ export async function GET(req: NextRequest) {
 
   const user = await prisma.user.findUnique({
     where: { id: session.userId },
-    include: { owner: { include: { vehicles: true } } },
+    include: {
+      owners: {
+        orderBy: { createdAt: 'asc' },
+        include: { vehicles: true },
+      },
+    },
   });
 
-  if (!user || !user.owner) {
+  if (!user || !user.owners.length) {
     return NextResponse.json({ error: 'Профиль не найден' }, { status: 404 });
   }
+
+  const primary = user.owners[0];
+  const cities = user.owners
+    .map((o) => o.city)
+    .filter((c): c is string => !!c);
 
   return NextResponse.json({
     user: { id: user.id, email: user.email, name: user.name },
     owner: {
-      id: user.owner.id,
-      name: user.owner.name,
-      phone: user.owner.phone,
-      company: user.owner.company,
-      city: user.owner.city,
-      rating: user.owner.rating,
-      completedOrders: user.owner.completedOrders,
-      isOnShift: user.owner.isOnShift,
-      vehicles: user.owner.vehicles.map((v) => ({
+      id: primary.id,
+      name: primary.name,
+      phone: primary.phone,
+      company: primary.company,
+      city: primary.city,
+      rating: primary.rating,
+      completedOrders: primary.completedOrders,
+      isOnShift: primary.isOnShift,
+      vehicles: primary.vehicles.map((v) => ({
         id: v.id,
         category: v.category,
         comment: v.comment,
       })),
     },
+    cities,
   });
 }
