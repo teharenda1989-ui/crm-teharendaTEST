@@ -26,6 +26,8 @@ export default function NewOrderPage() {
   const [allOwners, setAllOwners] = useState<Owner[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [cities, setCities] = useState<string[]>([]);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [autoCity, setAutoCity] = useState(false);
 
   const [category, setCategory] = useState('');
   const [city, setCity] = useState('');
@@ -61,17 +63,28 @@ export default function NewOrderPage() {
 
     fetch('/api/cities')
       .then((r) => r.json())
-      .then((data: { cities: string[] }) => setCities(data.cities || []))
+      .then((data: { cities: string[]; isSuperAdmin: boolean }) => {
+        const list = data.cities || [];
+        setCities(list);
+        setIsSuperAdmin(!!data.isSuperAdmin);
+
+        // Если партнёр и у него ровно один город — предзаполняем
+        if (!data.isSuperAdmin && list.length === 1) {
+          setCity(list[0]);
+          setAutoCity(true);
+        }
+      })
       .catch(() => setCities([]));
   }, []);
 
-  const matchingOwners = category && city
-    ? allOwners.filter(
-        (o) =>
-          o.city === city &&
-          o.vehicles.some((v) => v.category === category),
-      )
-    : [];
+  const matchingOwners =
+    category && city
+      ? allOwners.filter(
+          (o) =>
+            o.city === city &&
+            o.vehicles.some((v) => v.category === category),
+        )
+      : [];
 
   const tgGroups = groups.filter((g) => g.messenger === 'telegram');
   const maxGroups = groups.filter((g) => g.messenger === 'max');
@@ -195,22 +208,30 @@ export default function NewOrderPage() {
               <label className="block text-sm text-slate-600 mb-1">
                 Город <span className="text-red-500">*</span>
               </label>
-              <select
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
-                required
-                className="w-full border border-slate-300 rounded px-3 py-2"
-              >
-                <option value="">— Выберите город —</option>
-                {cities.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
+
+              {autoCity ? (
+                <div className="w-full border border-slate-300 rounded px-3 py-2 bg-slate-100 text-slate-700">
+                  {city}
+                </div>
+              ) : (
+                <select
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  required
+                  className="w-full border border-slate-300 rounded px-3 py-2"
+                >
+                  <option value="">— Выберите город —</option>
+                  {cities.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              )}
+
               {cities.length === 0 && (
                 <p className="text-xs text-amber-600 mt-1">
-                  Нет активных партнёров с городами. Создайте партнёра.
+                  Нет городов. Обратитесь к главному администратору.
                 </p>
               )}
             </div>
@@ -248,7 +269,8 @@ export default function NewOrderPage() {
             👤 Данные клиента (не уходят в группы и приложение)
           </h2>
           <p className="text-sm text-slate-500 mb-4">
-            Заполните, чтобы позже диспетчер мог поделиться контактами с исполнителем.
+            Заполните, чтобы позже диспетчер мог поделиться контактами с
+            исполнителем.
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
