@@ -33,6 +33,7 @@ model Partner {
   email          String?  @unique
   phone          String?
   city           String?
+  cities         String[] @default([])
   royaltyPercent Float    @default(3)
   isActive       Boolean  @default(true)
   comment        String?
@@ -184,18 +185,18 @@ model OrderGroup {
 }
 
 model OrderTake {
-  id                      String    @id @default(cuid())
-  orderId                 String
-  order                   Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  ownerId                 String
-  owner                   Owner     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  status                  String    @default("TAKEN")
-  takenAt                 DateTime  @default(now())
-  canceledAt              DateTime?
-  cancelReason            String?
-  ratingImpact            Float?
-  clientContactsShared    Boolean   @default(false)
-  clientContactsSharedAt  DateTime?
+  id                     String    @id @default(cuid())
+  orderId                String
+  order                  Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  ownerId                String
+  owner                  Owner     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  status                 String    @default("TAKEN")
+  takenAt                DateTime  @default(now())
+  canceledAt             DateTime?
+  cancelReason           String?
+  ratingImpact           Float?
+  clientContactsShared   Boolean   @default(false)
+  clientContactsSharedAt DateTime?
 
   @@index([orderId])
   @@index([ownerId])
