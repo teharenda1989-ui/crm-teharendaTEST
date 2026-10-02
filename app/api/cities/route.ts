@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getScope } from '@/lib/scope';
+import { RUSSIAN_CITIES } from '@/lib/russian-cities';
 
 export async function GET() {
   const scope = await getScope();
@@ -33,13 +34,13 @@ export async function GET() {
     });
   }
 
-  // SUPER_ADMIN — все города всех партнёров
+  // SUPER_ADMIN — полный список городов РФ + города из партнёров
   const partners = await prisma.partner.findMany({
     where: { isActive: true },
     select: { city: true, cities: true },
   });
 
-  const set = new Set<string>();
+  const set = new Set<string>(RUSSIAN_CITIES);
   for (const p of partners) {
     if (p.city && p.city.trim()) set.add(p.city.trim());
     for (const c of p.cities ?? []) {
@@ -48,7 +49,7 @@ export async function GET() {
   }
 
   return NextResponse.json({
-    cities: Array.from(set).sort(),
+    cities: Array.from(set).sort((a, b) => a.localeCompare(b, 'ru')),
     isSuperAdmin: true,
   });
 }
