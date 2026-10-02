@@ -8,21 +8,43 @@ export async function GET() {
     return NextResponse.json({ error: 'Не авторизован' }, { status: 401 });
   }
 
+  // ПАРТНЁР — только его города
+  if (!scope.isSuperAdmin) {
+    const partners = await prisma.partner.findMany({
+      where: scopeWhere(scope),
+      select: { city: true, cities: true },
+    });
+
+    const set = new Set<string>();
+    for (const p of partners) {
+      if (p.city && p.city.trim()) set.add(p.city.trim());
+      for (const c of p.cities ?? []) {
+        if (c && c.trim()) set.add(c.trim());
+      }
+    }
+
+    return NextResponse.json({
+      cities: Array.from(set).sort(),
+      isSuperAdmin: false,
+    });
+  }
+
+  // SUPER_ADMIN — все города всех партнёров
   const partners = await prisma.partner.findMany({
-    where: {
-      isActive: true,
-      ...scopeWhere(scope),
-    },
-    select: { city: true },
+    where: { isActive: true },
+    select: { city: true, cities: true },
   });
 
-  const cities = Array.from(
-    new Set(
-      partners
-        .map((p) => p.city?.trim())
-        .filter((c): c is string => !!c && c.length > 0),
-    ),
-  ).sort();
+  const set = new Set<string>();
+  for (const p of partners) {
+    if (p.city && p.city.trim()) set.add(p.city.trim());
+    for (const c of p.cities ?? []) {
+      if (c && c.trim()) set.add(c.trim());
+    }
+  }
 
-  return NextResponse.json({ cities });
+  return NextResponse.json({
+    cities: Array.from(set).sort(),
+    isSuperAdmin: true,
+  });
 }
