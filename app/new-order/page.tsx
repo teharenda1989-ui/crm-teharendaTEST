@@ -68,7 +68,7 @@ export default function NewOrderPage() {
         setCities(list);
         setIsSuperAdmin(!!data.isSuperAdmin);
 
-        // Если партнёр и у него ровно один город — предзаполняем
+        // Партнёр с одним городом — автоподстановка
         if (!data.isSuperAdmin && list.length === 1) {
           setCity(list[0]);
           setAutoCity(true);
@@ -114,7 +114,7 @@ export default function NewOrderPage() {
       setError('Выберите рубрику');
       return;
     }
-    if (!city) {
+    if (!city.trim()) {
       setError('Выберите город');
       return;
     }
@@ -135,7 +135,7 @@ export default function NewOrderPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           category,
-          city,
+          city: city.trim(),
           startAt,
           description,
           dispatcher,
@@ -209,7 +209,28 @@ export default function NewOrderPage() {
                 Город <span className="text-red-500">*</span>
               </label>
 
-              {autoCity ? (
+              {isSuperAdmin ? (
+                <>
+                  <input
+                    type="text"
+                    list="all-cities"
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    placeholder="Начните вводить город..."
+                    required
+                    className="w-full border border-slate-300 rounded px-3 py-2"
+                    autoComplete="off"
+                  />
+                  <datalist id="all-cities">
+                    {cities.map((c) => (
+                      <option key={c} value={c} />
+                    ))}
+                  </datalist>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Начните вводить название — появятся подсказки.
+                  </p>
+                </>
+              ) : autoCity ? (
                 <div className="w-full border border-slate-300 rounded px-3 py-2 bg-slate-100 text-slate-700">
                   {city}
                 </div>
@@ -227,12 +248,6 @@ export default function NewOrderPage() {
                     </option>
                   ))}
                 </select>
-              )}
-
-              {cities.length === 0 && (
-                <p className="text-xs text-amber-600 mt-1">
-                  Нет городов. Обратитесь к главному администратору.
-                </p>
               )}
             </div>
 
