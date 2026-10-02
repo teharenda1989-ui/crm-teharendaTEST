@@ -34,28 +34,37 @@ export async function PATCH(
 
   const body = await req.json();
 
+  // Нормализуем массив городов
+  const cities: string[] = Array.isArray(body.cities)
+    ? Array.from(
+        new Set(
+          body.cities
+            .map((c: any) => String(c).trim())
+            .filter((c: string) => c.length > 0),
+        ),
+      )
+    : undefined;
+
+  const data: any = {};
+
+  if (body.name !== undefined) data.name = body.name;
+  if (body.phone !== undefined) data.phone = body.phone || null;
+  if (body.royaltyPercent !== undefined)
+    data.royaltyPercent = Number(body.royaltyPercent) || 0;
+  if (body.comment !== undefined) data.comment = body.comment || null;
+  if (body.isActive !== undefined) data.isActive = body.isActive;
+  if (body.maxBotToken !== undefined)
+    data.maxBotToken = body.maxBotToken || null;
+
+  if (cities !== undefined) {
+    data.cities = cities;
+    // Синхронизируем основной city = первый город в списке
+    data.city = cities[0] || null;
+  }
+
   const partner = await prisma.partner.update({
     where: { id: params.id },
-    data: {
-      ...(body.name !== undefined && { name: body.name }),
-      ...(body.phone !== undefined && { phone: body.phone || null }),
-      ...(body.city !== undefined && { city: body.city || null }),
-      ...(body.royaltyPercent !== undefined && {
-        royaltyPercent: Number(body.royaltyPercent) || 0,
-      }),
-      ...(body.comment !== undefined && { comment: body.comment || null }),
-      ...(body.isActive !== undefined && { isActive: body.isActive }),
-      ...(body.maxBotToken !== undefined && {
-        maxBotToken: body.maxBotToken || null,
-      }),
-      ...(body.cities !== undefined && {
-        cities: Array.isArray(body.cities)
-          ? body.cities
-              .map((c: any) => String(c).trim())
-              .filter((c: string) => c.length > 0)
-          : [],
-      }),
-    },
+    data,
   });
 
   return NextResponse.json(partner);
