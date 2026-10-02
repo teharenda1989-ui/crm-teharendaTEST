@@ -6,9 +6,7 @@ function calcRatingImpact(
   hoursLeft: number,
   contactsShared: boolean,
 ): number {
-  // После получения контактов — штраф всегда серьёзный
   if (contactsShared) return -0.3;
-  // До получения — по времени до старта
   if (hoursLeft >= 24) return -0.02;
   if (hoursLeft >= 2) return -0.15;
   return -0.3;
@@ -53,11 +51,12 @@ export async function POST(
     })
   ).map((o) => o.id);
 
+  // ✅ ФИКС: поддержка и TAKEN, и COMPLETED_PENDING
   const take = await prisma.orderTake.findFirst({
     where: {
       orderId: order.id,
       ownerId: { in: ownerIds },
-      status: 'TAKEN',
+      status: { in: ['TAKEN', 'COMPLETED_PENDING'] },
     },
     include: { owner: true },
   });
@@ -98,7 +97,6 @@ export async function POST(
       data: { rating: newRating },
     });
 
-    // Заявка возвращается в «Новые»
     await tx.order.update({
       where: { id: order.id },
       data: {
@@ -114,7 +112,9 @@ export async function POST(
         type: 'ORDER_CANCELED',
         orderId: order.id,
         ownerId: take.ownerId,
-        message: `${take.owner.name} отказался от ${order.category}${take.clientContactsShared ? ' (после получения контактов клиента)' : ''}, причина: ${reason}`,
+        message: `${take.owner.name} отказался от ${order.category}${
+          take.clientContactsShared ? ' (после получения контактов)' : ''
+        }, причина: ${reason}`,
       },
     });
   });
