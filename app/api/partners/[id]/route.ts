@@ -34,17 +34,6 @@ export async function PATCH(
 
   const body = await req.json();
 
-  // Нормализуем массив городов
-  const cities: string[] = Array.isArray(body.cities)
-    ? Array.from(
-        new Set(
-          body.cities
-            .map((c: any) => String(c).trim())
-            .filter((c: string) => c.length > 0),
-        ),
-      )
-    : undefined;
-
   const data: any = {};
 
   if (body.name !== undefined) data.name = body.name;
@@ -56,9 +45,20 @@ export async function PATCH(
   if (body.maxBotToken !== undefined)
     data.maxBotToken = body.maxBotToken || null;
 
-  if (cities !== undefined) {
+  // Если cities передали — обрабатываем массив
+  if (body.cities !== undefined) {
+    const cities: string[] = Array.isArray(body.cities)
+      ? Array.from(
+          new Set(
+            body.cities
+              .map((c: any) => String(c).trim())
+              .filter((c: string) => c.length > 0),
+          ),
+        )
+      : [];
+
     data.cities = cities;
-    // Синхронизируем основной city = первый город в списке
+    // Основной city = первый город в списке
     data.city = cities[0] || null;
   }
 
