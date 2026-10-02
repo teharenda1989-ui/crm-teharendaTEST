@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyMobileToken, getBearerToken } from '@/lib/mobile-auth';
 
+// DELETE — удаляем технику во ВСЕХ карточках (по category + comment)
 export async function DELETE(
   req: NextRequest,
   { params }: { params: { id: string } },
@@ -17,14 +18,24 @@ export async function DELETE(
   }
 
   const vehicle = await prisma.vehicle.findFirst({
-    where: { id: params.id, ownerId: session.ownerId },
+    where: {
+      id: params.id,
+      owner: { userId: session.userId },
+    },
   });
 
   if (!vehicle) {
     return NextResponse.json({ error: 'Не найдено' }, { status: 404 });
   }
 
-  await prisma.vehicle.delete({ where: { id: vehicle.id } });
+  // Удаляем во всех карточках (по category + comment)
+  await prisma.vehicle.deleteMany({
+    where: {
+      category: vehicle.category,
+      comment: vehicle.comment,
+      owner: { userId: session.userId },
+    },
+  });
 
   return NextResponse.json({ ok: true });
 }
