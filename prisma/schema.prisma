@@ -53,7 +53,7 @@ model Owner {
   id              String   @id @default(cuid())
   name            String
   phone           String
-  email           String?  @unique
+  email           String?
   company         String?
   city            String?
   address         String?
