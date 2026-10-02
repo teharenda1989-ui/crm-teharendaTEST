@@ -48,6 +48,13 @@ export async function PATCH(
       ...(body.maxBotToken !== undefined && {
         maxBotToken: body.maxBotToken || null,
       }),
+      ...(body.cities !== undefined && {
+        cities: Array.isArray(body.cities)
+          ? body.cities
+              .map((c: any) => String(c).trim())
+              .filter((c: string) => c.length > 0)
+          : [],
+      }),
     },
   });
 
@@ -63,7 +70,6 @@ export async function DELETE(
     return NextResponse.json({ error: 'Нет доступа' }, { status: 403 });
   }
 
-  // Удаляем всех пользователей партнёра, потом самого партнёра
   await prisma.user.deleteMany({ where: { partnerId: params.id } });
   await prisma.partner.delete({ where: { id: params.id } });
 
