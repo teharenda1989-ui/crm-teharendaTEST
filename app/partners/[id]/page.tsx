@@ -43,16 +43,15 @@ export default function PartnerPage() {
 
   const [showToken, setShowToken] = useState(false);
 
-  // Города
+  // Города — автодополнение
   const [allCities, setAllCities] = useState<string[]>([]);
-  const [selectedCity, setSelectedCity] = useState('');
+  const [newCityInput, setNewCityInput] = useState('');
 
   const load = () => {
     setLoading(true);
     fetch(`/api/partners/${id}`)
       .then((r) => r.json())
       .then((data) => {
-        // На случай, если cities не массив
         const cities = Array.isArray(data.cities) ? data.cities : [];
         setPartner({ ...data, cities });
       })
@@ -61,21 +60,9 @@ export default function PartnerPage() {
   };
 
   const loadAllCities = () => {
-    // Получаем все города из всех партнёров (SUPER_ADMIN видит все)
-    fetch('/api/partners')
+    fetch('/api/cities/all')
       .then((r) => r.json())
-      .then((data: any[]) => {
-        const set = new Set<string>();
-        data.forEach((p) => {
-          if (p.city && p.city.trim()) set.add(p.city.trim());
-          if (Array.isArray(p.cities)) {
-            p.cities.forEach((c: string) => {
-              if (c && c.trim()) set.add(c.trim());
-            });
-          }
-        });
-        setAllCities(Array.from(set).sort());
-      })
+      .then((data: { cities: string[] }) => setAllCities(data.cities || []))
       .catch(() => setAllCities([]));
   };
 
@@ -100,7 +87,6 @@ export default function PartnerPage() {
         body: JSON.stringify({
           name: partner.name,
           phone: partner.phone,
-          city: partner.city,
           cities: partner.cities,
           royaltyPercent: partner.royaltyPercent,
           comment: partner.comment,
@@ -168,21 +154,23 @@ export default function PartnerPage() {
     }
   };
 
-  // Города: добавить
+  // Добавить город из поля
   const handleAddCity = () => {
-    if (!partner || !selectedCity) return;
-    if (partner.cities.includes(selectedCity)) {
-      setSelectedCity('');
+    if (!partner) return;
+    const city = newCityInput.trim();
+    if (!city) return;
+    if (partner.cities.includes(city)) {
+      setNewCityInput('');
       return;
     }
     setPartner({
       ...partner,
-      cities: [...partner.cities, selectedCity].sort(),
+      cities: [...partner.cities, city].sort(),
     });
-    setSelectedCity('');
+    setNewCityInput('');
   };
 
-  // Города: удалить
+  // Удалить город
   const handleRemoveCity = (city: string) => {
     if (!partner) return;
     setPartner({
@@ -199,11 +187,6 @@ export default function PartnerPage() {
     return <div className="text-slate-500">Партнёр не найден</div>;
   }
 
-  // Города, которые можно добавить (которых ещё нет у партнёра)
-  const availableToAdd = allCities.filter(
-    (c) => !partner.cities.includes(c),
-  );
-
   return (
     <div className="max-w-3xl">
       <div className="mb-4">
@@ -213,6 +196,7 @@ export default function PartnerPage() {
       </div>
 
       <form onSubmit={handleSave} className="flex flex-col gap-6">
+        {/* Основные данные */}
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex justify-between items-center mb-6 flex-wrap gap-3">
             <h1 className="text-2xl font-bold">{partner.name}</h1>
@@ -242,24 +226,6 @@ export default function PartnerPage() {
                 }
                 className="w-full border border-slate-300 rounded px-3 py-2"
               />
-            </div>
-
-            <div>
-              <label className="block text-sm text-slate-600 mb-1">
-                Основной город
-              </label>
-              <input
-                type="text"
-                value={partner.city || ''}
-                onChange={(e) =>
-                  setPartner({ ...partner, city: e.target.value })
-                }
-                placeholder="Новосибирск"
-                className="w-full border border-slate-300 rounded px-3 py-2"
-              />
-              <p className="text-xs text-slate-400 mt-1">
-                Отображается как основной. Полный список городов ниже.
-              </p>
             </div>
 
             <div>
@@ -344,44 +310,39 @@ export default function PartnerPage() {
           )}
 
           <div className="flex gap-2">
-            <select
-              value={selectedCity}
-              onChange={(e) => setSelectedCity(e.target.value)}
+            <input
+              type="text"
+              list="partner-all-cities"
+              value={newCityInput}
+              onChange={(e) => setNewCityInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleAddCity();
+                }
+              }}
+              placeholder="Начните вводить город — появятся подсказки"
               className="flex-1 border border-slate-300 rounded px-3 py-2"
-            >
-              <option value="">— Выберите город для добавления —</option>
-              {availableToAdd.length === 0 ? (
-                <option value="" disabled>
-                  Нет доступных городов
-                </option>
-              ) : (
-                availableToAdd.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))
-              )}
-            </select>
+              autoComplete="off"
+            />
+            <datalist id="partner-all-cities">
+              {allCities.map((c) => (
+                <option key={c} value={c} />
+              ))}
+            </datalist>
             <button
               type="button"
               onClick={handleAddCity}
-              disabled={!selectedCity}
-              className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 disabled:opacity-50"
+              disabled={!newCityInput.trim()}
+              className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 disabled:opacity-50 whitespace-nowrap"
             >
               + Добавить
             </button>
           </div>
 
-          {availableToAdd.length === 0 && allCities.length > 0 && (
-            <p className="text-xs text-slate-400 mt-2">
-              Все существующие города уже добавлены. Чтобы добавить новый
-              город — создайте партнёра с этим городом.
-            </p>
-          )}
-
           <p className="text-xs text-slate-400 mt-3">
-            Не забудьте нажать <b>«Сохранить»</b> внизу, чтобы применить
-            изменения.
+            Основной город партнёра — <b>первый</b> в списке. Не забудьте нажать{' '}
+            <b>«Сохранить»</b> внизу, чтобы применить изменения.
           </p>
         </div>
 
@@ -416,6 +377,7 @@ export default function PartnerPage() {
           </div>
         </div>
 
+        {/* Учётная запись */}
         <div className="bg-white rounded-lg shadow p-6">
           <h2 className="text-lg font-semibold mb-4">Учётная запись</h2>
 
