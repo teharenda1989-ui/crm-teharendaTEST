@@ -20,7 +20,10 @@ export async function GET(
     where: { id: params.id },
     include: {
       takes: {
-        where: { ownerId: session.ownerId },
+        where: {
+          // ✅ Ищем по userId — заявку мог взять любой Owner этого User
+          owner: { userId: session.userId },
+        },
         orderBy: { takenAt: 'desc' },
         take: 1,
       },
@@ -33,9 +36,9 @@ export async function GET(
 
   const myTake = order.takes[0];
   const isMine = !!myTake && myTake.status === 'TAKEN';
+  const isPending = myTake?.status === 'COMPLETED_PENDING';
   const contactsShared = myTake?.clientContactsShared ?? false;
 
-  // Базовая инфа — всем
   const response: any = {
     id: order.id,
     category: order.category,
@@ -48,13 +51,13 @@ export async function GET(
     contactsShared,
   };
 
-  // Диспетчер и телефон — только если заявка моя (взял её)
-  if (isMine) {
+  // Диспетчер и телефон — только если заявка моя
+  if (isMine || isPending) {
     response.dispatcher = order.dispatcher;
     response.dispatcherPhone = order.dispatcherPhone;
   }
 
-  // Клиент — только если диспетчер поделился
+  // Клиент — только если поделились
   if (contactsShared) {
     response.clientName = order.clientName;
     response.clientPhone = order.clientPhone;
