@@ -78,8 +78,6 @@ model Owner {
   vehicles Vehicle[]
   logs     MessageLog[]
   takes    OrderTake[]
-
-  @@unique([partnerId, phone, city])
 }
 
 model Vehicle {
