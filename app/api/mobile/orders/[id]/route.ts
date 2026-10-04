@@ -21,7 +21,7 @@ export async function GET(
     include: {
       takes: {
         where: {
-          // ✅ Ищем по userId — заявку мог взять любой Owner этого User
+          // ✅ По userId — заявку мог взять любой Owner этого User
           owner: { userId: session.userId },
         },
         orderBy: { takenAt: 'desc' },
@@ -35,7 +35,7 @@ export async function GET(
   }
 
   const myTake = order.takes[0];
-  const isMine = !!myTake && myTake.status === 'TAKEN';
+  const isMine = myTake?.status === 'TAKEN';
   const isPending = myTake?.status === 'COMPLETED_PENDING';
   const contactsShared = myTake?.clientContactsShared ?? false;
 
@@ -51,13 +51,11 @@ export async function GET(
     contactsShared,
   };
 
-  // Диспетчер и телефон — только если заявка моя
   if (isMine || isPending) {
     response.dispatcher = order.dispatcher;
     response.dispatcherPhone = order.dispatcherPhone;
   }
 
-  // Клиент — только если поделились
   if (contactsShared) {
     response.clientName = order.clientName;
     response.clientPhone = order.clientPhone;
