@@ -45,7 +45,12 @@ export async function GET(req: NextRequest) {
       publishedInApp: true,
       city: { in: cities },
       category: { in: categories },
-      takes: { none: { status: 'TAKEN' } },
+      // ✅ Исключаем заявки со взятием в статусах TAKEN и COMPLETED_PENDING
+      takes: {
+        none: {
+          status: { in: ['TAKEN', 'COMPLETED_PENDING'] },
+        },
+      },
     },
     orderBy: { createdAt: 'desc' },
     take: 100,
