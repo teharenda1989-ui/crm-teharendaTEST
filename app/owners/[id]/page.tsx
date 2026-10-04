@@ -36,17 +36,6 @@ export default async function OwnerPage({ params }: Props) {
 
   if (!owner) notFound();
 
-  const allVehicles = await prisma.vehicle.findMany({
-    where: scope?.partnerId
-      ? { owner: { partnerId: scope.partnerId } }
-      : {},
-    select: { category: true },
-  });
-
-  const suggestions = Array.from(
-    new Set(allVehicles.map((v) => v.category)),
-  ).sort();
-
   const doneCount = owner.takes.filter((t) => t.status === 'DONE').length;
   const canceledCount = owner.takes.filter(
     (t) => t.status === 'CANCELED',
@@ -168,7 +157,6 @@ export default async function OwnerPage({ params }: Props) {
             category: v.category,
             comment: v.comment,
           }))}
-          suggestions={suggestions}
         />
       </div>
 
