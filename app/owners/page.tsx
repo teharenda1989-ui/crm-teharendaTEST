@@ -20,20 +20,53 @@ export default async function OwnersPage({ searchParams }: Props) {
 
   const { category, city, search, active } = searchParams;
 
-  const owners = await prisma.owner.findMany({
+  // ✅ Находим userId, у которых есть карточки с городом
+  const usersWithCities = await prisma.owner.findMany({
     where: {
       ...scopeWhere(scope),
-      ...(city && { city }),
-      ...(category && { vehicles: { some: { category } } }),
-      ...(search && {
-        OR: [
-          { name: { contains: search } },
-          { company: { contains: search } },
-          { phone: { contains: search } },
-        ],
-      }),
-      ...(active === 'true' && { isActive: true }),
-      ...(active === 'false' && { isActive: false }),
+      city: { not: null },
+      userId: { not: null },
+    },
+    select: { userId: true },
+    distinct: ['userId'],
+  });
+
+  const userIdsWithCities = usersWithCities
+    .map((u) => u.userId)
+    .filter((id): id is string => !!id);
+
+  // ✅ Скрываем регистрационную карточку (без города), если есть карточка с городом
+  const owners = await prisma.owner.findMany({
+    where: {
+      AND: [
+        scopeWhere(scope),
+        // Исключаем регистрационную карточку без города, если у User есть города
+        userIdsWithCities.length
+          ? {
+              NOT: {
+                AND: [
+                  { city: null },
+                  { userId: { in: userIdsWithCities } },
+                ],
+              },
+            }
+          : {},
+        ...(city ? [{ city }] : []),
+        ...(category ? [{ vehicles: { some: { category } } }] : []),
+        ...(search
+          ? [
+              {
+                OR: [
+                  { name: { contains: search } },
+                  { company: { contains: search } },
+                  { phone: { contains: search } },
+                ],
+              },
+            ]
+          : []),
+        ...(active === 'true' ? [{ isActive: true }] : []),
+        ...(active === 'false' ? [{ isActive: false }] : []),
+      ],
     },
     include: { vehicles: true },
     orderBy: { name: 'asc' },
