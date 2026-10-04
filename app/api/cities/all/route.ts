@@ -3,13 +3,15 @@ import { prisma } from '@/lib/prisma';
 import { getCurrentUser } from '@/lib/auth';
 import { RUSSIAN_CITIES } from '@/lib/russian-cities';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET() {
   const session = await getCurrentUser();
   if (!session || session.role !== 'SUPER_ADMIN') {
     return NextResponse.json({ error: 'Нет доступа' }, { status: 403 });
   }
 
-  // Все города РФ + города, которые уже есть у партнёров
   const partners = await prisma.partner.findMany({
     select: { city: true, cities: true },
   });
