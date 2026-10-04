@@ -28,12 +28,33 @@ export async function GET(req: NextRequest) {
   }
 
   const primary = user.owners[0];
+
+  // ✅ Суммируем статистику по всем карточкам
+  const totalCompleted = user.owners.reduce(
+    (sum, o) => sum + (o.completedOrders || 0),
+    0,
+  );
+
+  // Рейтинг — берём средний по всем карточкам (или лучший)
+  // Логика: если карточка новая и пустая (rating=4.5 по умолчанию),
+  // она занижает средний. Берём средний по тем карточкам, где есть completedOrders > 0.
+  const activeOwners = user.owners.filter((o) => o.completedOrders > 0);
+  const avgRating = activeOwners.length > 0
+    ? activeOwners.reduce((sum, o) => sum + o.rating, 0) / activeOwners.length
+    : 4.5;
+
   const cities = user.owners
     .map((o) => ({
       ownerId: o.id,
       city: o.city,
     }))
     .filter((c) => !!c.city);
+
+  // Уникальная техника по всем карточкам
+  const allVehicles = user.owners.flatMap((o) => o.vehicles);
+  const uniqueVehicles = Array.from(
+    new Map(allVehicles.map((v) => [v.category, v])).values(),
+  );
 
   return NextResponse.json({
     user: { id: user.id, email: user.email, name: user.name },
@@ -43,10 +64,10 @@ export async function GET(req: NextRequest) {
       phone: primary.phone,
       company: primary.company,
       city: primary.city,
-      rating: primary.rating,
-      completedOrders: primary.completedOrders,
-      isOnShift: primary.isOnShift,
-      vehicles: primary.vehicles.map((v) => ({
+      rating: avgRating,
+      completedOrders: totalCompleted,
+      isOnShift: user.owners.some((o) => o.isOnShift),
+      vehicles: uniqueVehicles.map((v) => ({
         id: v.id,
         category: v.category,
         comment: v.comment,
@@ -80,7 +101,6 @@ export async function PATCH(req: NextRequest) {
   }
 
   if (Object.keys(data).length) {
-    // Обновляем все карточки Owner этого User
     await prisma.owner.updateMany({
       where: { userId: session.userId },
       data,
