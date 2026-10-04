@@ -79,7 +79,7 @@ model Owner {
   logs     MessageLog[]
   takes    OrderTake[]
 
-  @@unique([partnerId, phone])
+  @@unique([partnerId, phone, city])
 }
 
 model Vehicle {
