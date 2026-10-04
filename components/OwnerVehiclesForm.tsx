@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { VEHICLE_CATEGORIES } from '@/lib/vehicle-categories';
 
 interface Vehicle {
   id: string;
@@ -12,24 +13,28 @@ interface Vehicle {
 interface Props {
   ownerId: string;
   initialVehicles: Vehicle[];
-  suggestions: string[];
 }
 
 export default function OwnerVehiclesForm({
   ownerId,
   initialVehicles,
-  suggestions,
 }: Props) {
   const router = useRouter();
   const [vehicles, setVehicles] = useState(initialVehicles);
-  const [category, setCategory] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('');
   const [comment, setComment] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  // Категории, которых ещё нет у владельца
+  const myCategories = vehicles.map((v) => v.category);
+  const availableCategories = VEHICLE_CATEGORIES.filter(
+    (c) => !myCategories.includes(c),
+  );
+
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!category.trim()) return;
+    if (!selectedCategory) return;
 
     setSaving(true);
     setError('');
@@ -37,12 +42,15 @@ export default function OwnerVehiclesForm({
       const res = await fetch(`/api/owners/${ownerId}/vehicles`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ category, comment }),
+        body: JSON.stringify({
+          category: selectedCategory,
+          comment,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Ошибка');
       setVehicles([...vehicles, data]);
-      setCategory('');
+      setSelectedCategory('');
       setComment('');
       router.refresh();
     } catch (e: any) {
@@ -108,19 +116,19 @@ export default function OwnerVehiclesForm({
       >
         <div>
           <label className="block text-xs text-slate-600 mb-1">Рубрика *</label>
-          <input
-            list="category-suggestions"
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
+          <select
+            value={selectedCategory}
+            onChange={(e) => setSelectedCategory(e.target.value)}
             required
-            placeholder="Автокран"
             className="w-full border border-slate-300 rounded px-3 py-2"
-          />
-          <datalist id="category-suggestions">
-            {suggestions.map((s) => (
-              <option key={s} value={s} />
+          >
+            <option value="">— Выберите рубрику —</option>
+            {availableCategories.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
             ))}
-          </datalist>
+          </select>
         </div>
 
         <div>
@@ -139,7 +147,7 @@ export default function OwnerVehiclesForm({
         <div className="flex items-end">
           <button
             type="submit"
-            disabled={saving}
+            disabled={saving || !selectedCategory}
             className="w-full bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 disabled:opacity-50"
           >
             {saving ? 'Сохраняем...' : '+ Добавить технику'}
