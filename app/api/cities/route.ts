@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getScope } from '@/lib/scope';
-import { RUSSIAN_CITIES } from '@/lib/russian-cities';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function GET() {
   const scope = await getScope();
@@ -9,7 +11,6 @@ export async function GET() {
     return NextResponse.json({ error: 'Не авторизован' }, { status: 401 });
   }
 
-  // ПАРТНЁР — только его города
   if (!scope.isSuperAdmin) {
     if (!scope.partnerId) {
       return NextResponse.json({ cities: [], isSuperAdmin: false });
@@ -34,13 +35,12 @@ export async function GET() {
     });
   }
 
-  // SUPER_ADMIN — полный список городов РФ + города из партнёров
   const partners = await prisma.partner.findMany({
     where: { isActive: true },
     select: { city: true, cities: true },
   });
 
-  const set = new Set<string>(RUSSIAN_CITIES);
+  const set = new Set<string>();
   for (const p of partners) {
     if (p.city && p.city.trim()) set.add(p.city.trim());
     for (const c of p.cities ?? []) {
@@ -49,7 +49,7 @@ export async function GET() {
   }
 
   return NextResponse.json({
-    cities: Array.from(set).sort((a, b) => a.localeCompare(b, 'ru')),
+    cities: Array.from(set).sort(),
     isSuperAdmin: true,
   });
 }
