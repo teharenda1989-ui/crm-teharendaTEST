@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyMobileToken, getBearerToken } from '@/lib/mobile-auth';
 
+const CANCEL_COOLDOWN_MINUTES = 15;
+
 export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } },
@@ -32,6 +34,7 @@ export async function POST(
     );
   }
 
+  // Уже взята кем-то другим?
   const alreadyTaken = order.takes.some((t) => t.status === 'TAKEN');
   if (alreadyTaken) {
     return NextResponse.json(
@@ -40,6 +43,7 @@ export async function POST(
     );
   }
 
+  // Находим Owner-карточку этого User с подходящим городом
   const owner = await prisma.owner.findFirst({
     where: {
       userId: session.userId,
@@ -54,6 +58,26 @@ export async function POST(
     );
   }
 
+  // ✅ Проверка 15-минутной блокировки после собственной отмены
+  const myCanceled = order.takes.find(
+    (t) => t.ownerId === owner.id && t.status === 'CANCELED',
+  );
+
+  if (myCanceled?.canceledAt) {
+    const minutesPassed =
+      (Date.now() - new Date(myCanceled.canceledAt).getTime()) / 1000 / 60;
+
+    if (minutesPassed < CANCEL_COOLDOWN_MINUTES) {
+      const minutesLeft = Math.ceil(CANCEL_COOLDOWN_MINUTES - minutesPassed);
+      return NextResponse.json(
+        {
+          error: `Вы отказались от этой заявки ранее. Повторно взять можно через ${minutesLeft} мин.`,
+        },
+        { status: 429 },
+      );
+    }
+  }
+
   const result = await prisma.$transaction(async (tx) => {
     const take = await tx.orderTake.create({
       data: {
@@ -63,7 +87,6 @@ export async function POST(
       },
     });
 
-    // Статус «Уточнение деталей»: закрываем поиск в группах, подтягиваем исполнителя
     await tx.order.update({
       where: { id: order.id },
       data: {
@@ -79,7 +102,7 @@ export async function POST(
         type: 'ORDER_TAKEN',
         orderId: order.id,
         ownerId: owner.id,
-        message: `${owner.name} взял ${order.category} (уточнение деталей)`,
+        message: `${owner.name} взял ${order.category}`,
       },
     });
 
