@@ -106,6 +106,15 @@ export default function OrderPage() {
       .catch(() => {});
   }, [id]);
 
+  // ✅ АВТООБНОВЛЕНИЕ КАЖДЫЕ 5 СЕКУНД
+  useEffect(() => {
+    const interval = setInterval(() => {
+      reloadOrder();
+    }, 5000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
   useEffect(() => {
     if (!order?.assigneePhone) {
       setOwnerSuggest(null);
