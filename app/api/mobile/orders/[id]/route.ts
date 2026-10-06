@@ -21,7 +21,6 @@ export async function GET(
     include: {
       takes: {
         where: {
-          // ✅ По userId — заявку мог взять любой Owner этого User
           owner: { userId: session.userId },
         },
         orderBy: { takenAt: 'desc' },
@@ -33,6 +32,16 @@ export async function GET(
   if (!order) {
     return NextResponse.json({ error: 'Заявка не найдена' }, { status: 404 });
   }
+
+  // ✅ Ищем последнюю отмену этим User по этой заявке
+  const canceledTake = await prisma.orderTake.findFirst({
+    where: {
+      orderId: order.id,
+      status: 'CANCELED',
+      owner: { userId: session.userId },
+    },
+    orderBy: { canceledAt: 'desc' },
+  });
 
   const myTake = order.takes[0];
   const isMine = myTake?.status === 'TAKEN';
@@ -49,6 +58,7 @@ export async function GET(
     status: order.status,
     myTakeStatus: myTake?.status ?? null,
     contactsShared,
+    canceledAt: canceledTake?.canceledAt ?? null,
   };
 
   if (isMine || isPending) {
