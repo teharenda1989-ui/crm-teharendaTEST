@@ -34,7 +34,6 @@ export async function POST(
     );
   }
 
-  // Уже взята кем-то другим?
   const alreadyTaken = order.takes.some((t) => t.status === 'TAKEN');
   if (alreadyTaken) {
     return NextResponse.json(
@@ -43,7 +42,7 @@ export async function POST(
     );
   }
 
-  // Находим Owner-карточку этого User с подходящим городом
+  // Находим Owner-карточку с подходящим городом (для записи)
   const owner = await prisma.owner.findFirst({
     where: {
       userId: session.userId,
@@ -58,20 +57,31 @@ export async function POST(
     );
   }
 
-  // ✅ Проверка 15-минутной блокировки после собственной отмены
-  const myCanceled = order.takes.find(
-    (t) => t.ownerId === owner.id && t.status === 'CANCELED',
-  );
+  // ✅ Ищем отмену ЛЮБОЙ карточкой этого User (не только абаканской)
+  const myCanceled = order.takes
+    .filter((t) => t.status === 'CANCELED' && t.canceledAt)
+    .filter(async () => true); // заглушка, ниже делаем через отдельный запрос
 
-  if (myCanceled?.canceledAt) {
+  // Запрашиваем отмены со связанной карточкой Owner по userId
+  const canceledTake = await prisma.orderTake.findFirst({
+    where: {
+      orderId: order.id,
+      status: 'CANCELED',
+      owner: { userId: session.userId },
+    },
+    orderBy: { canceledAt: 'desc' },
+  });
+
+  if (canceledTake?.canceledAt) {
     const minutesPassed =
-      (Date.now() - new Date(myCanceled.canceledAt).getTime()) / 1000 / 60;
+      (Date.now() - new Date(canceledTake.canceledAt).getTime()) / 1000 / 60;
 
     if (minutesPassed < CANCEL_COOLDOWN_MINUTES) {
       const minutesLeft = Math.ceil(CANCEL_COOLDOWN_MINUTES - minutesPassed);
       return NextResponse.json(
         {
           error: `Вы отказались от этой заявки ранее. Повторно взять можно через ${minutesLeft} мин.`,
+          cooldownMinutesLeft: minutesLeft,
         },
         { status: 429 },
       );
