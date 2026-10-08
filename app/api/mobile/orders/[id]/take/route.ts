@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyMobileToken, getBearerToken } from '@/lib/mobile-auth';
+import { closeOrderInGroups } from '@/lib/order-messages';
 
 const CANCEL_COOLDOWN_MINUTES = 15;
 
@@ -42,7 +43,6 @@ export async function POST(
     );
   }
 
-  // Находим Owner-карточку с подходящим городом (для записи)
   const owner = await prisma.owner.findFirst({
     where: {
       userId: session.userId,
@@ -57,12 +57,7 @@ export async function POST(
     );
   }
 
-  // ✅ Ищем отмену ЛЮБОЙ карточкой этого User (не только абаканской)
-  const myCanceled = order.takes
-    .filter((t) => t.status === 'CANCELED' && t.canceledAt)
-    .filter(async () => true); // заглушка, ниже делаем через отдельный запрос
-
-  // Запрашиваем отмены со связанной карточкой Owner по userId
+  // Проверка 15-минутной блокировки
   const canceledTake = await prisma.orderTake.findFirst({
     where: {
       orderId: order.id,
@@ -118,6 +113,9 @@ export async function POST(
 
     return take;
   });
+
+  // ✅ Автоматически закрываем заявку в группах
+  await closeOrderInGroups(order.id);
 
   return NextResponse.json({ ok: true, take: result });
 }
