@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyMobileToken, getBearerToken } from '@/lib/mobile-auth';
+import { reopenOrderInGroups } from '@/lib/order-messages';
 
 function calcRatingImpact(
   hoursLeft: number,
@@ -51,7 +52,6 @@ export async function POST(
     })
   ).map((o) => o.id);
 
-  // ✅ ФИКС: поддержка и TAKEN, и COMPLETED_PENDING
   const take = await prisma.orderTake.findFirst({
     where: {
       orderId: order.id,
@@ -118,6 +118,9 @@ export async function POST(
       },
     });
   });
+
+  // ✅ Автоматически открываем заявку заново в группах
+  await reopenOrderInGroups(order.id);
 
   return NextResponse.json({ ok: true, ratingImpact });
 }
