@@ -447,4 +447,575 @@ export default function OrderPage() {
                 </span>
               )}
               {order.result === 'SUCCESS' && (
-                <span className="text-xs bg-green-100 text-green-700
+                <span className="text-xs bg-green-100 text-green-700 px-3 py-1 rounded font-medium">
+                  ✅ Успешно
+                </span>
+              )}
+              {order.result === 'FAIL' && (
+                <span className="text-xs bg-red-100 text-red-700 px-3 py-1 rounded font-medium">
+                  ❌ Отклонена
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="text-sm text-slate-500 text-right">
+            <div>
+              Создана: {new Date(order.createdAt).toLocaleString('ru-RU')}
+            </div>
+            {hasGroups && (
+              <div className="mt-1">
+                Отправлено в: {order.groups.map((g) => g.group.title).join(', ')}
+              </div>
+            )}
+            {order.publishedInApp && (
+              <div className="mt-1 text-orange-600 font-medium">
+                📱 Опубликовано в приложении
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {activeTake && (
+        <div className="bg-white rounded-lg shadow p-6 mb-6 border-l-4 border-cyan-500">
+          <h2 className="text-lg font-semibold mb-4">🚜 Исполнитель</h2>
+
+          {activeTake.status === 'COMPLETED_PENDING' && (
+            <div className="mb-4 bg-amber-50 border border-amber-200 rounded p-4">
+              <div className="font-medium text-amber-900 mb-1">
+                ⏳ Исполнитель отметил заявку как выполненную
+              </div>
+              <div className="text-sm text-amber-700">
+                Подтвердите выполнение заказа, чтобы закрыть заявку как
+                «Успешно».
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <div className="text-sm text-slate-500">Имя</div>
+              <div className="font-medium">{activeTake.owner.name}</div>
+            </div>
+            <div>
+              <div className="text-sm text-slate-500">Телефон</div>
+              <a
+                href={`tel:${activeTake.owner.phone}`}
+                className="font-medium text-green-600 hover:underline"
+              >
+                {activeTake.owner.phone}
+              </a>
+            </div>
+            <div>
+              <div className="text-sm text-slate-500">Рейтинг</div>
+              <div className="font-medium text-amber-600">
+                {ratingStars(activeTake.owner.rating)}{' '}
+                <span className="text-slate-900">
+                  {activeTake.owner.rating.toFixed(1)}
+                </span>
+              </div>
+            </div>
+            <div>
+              <div className="text-sm text-slate-500">Выполнено заказов</div>
+              <div className="font-medium">
+                {activeTake.owner.completedOrders}
+              </div>
+            </div>
+            <div>
+              <div className="text-sm text-slate-500">Взял</div>
+              <div className="font-medium">
+                {formatDateTime(activeTake.takenAt)}
+              </div>
+            </div>
+            <div>
+              <div className="text-sm text-slate-500">Статус</div>
+              <div className="font-medium">
+                {activeTake.status === 'TAKEN' && '⏳ В работе'}
+                {activeTake.status === 'COMPLETED_PENDING' &&
+                  '⏳ Ждёт подтверждения'}
+                {activeTake.status === 'DONE' && '✅ Подтверждено'}
+                {activeTake.status === 'CANCELED' && '❌ Отклонена'}
+              </div>
+            </div>
+          </div>
+
+          {activeTake.status === 'TAKEN' && (
+            <div className="mt-4 pt-4 border-t border-slate-200">
+              {!contactsShared ? (
+                <button
+                  type="button"
+                  onClick={handleShareContacts}
+                  disabled={saving}
+                  className="bg-blue-600 text-white px-6 py-3 rounded hover:bg-blue-700 font-medium disabled:opacity-50"
+                >
+                  📞 Поделиться контактами клиента
+                </button>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <span className="bg-green-100 text-green-700 px-4 py-2 rounded font-medium">
+                    ✅ Данные клиента отправлены
+                  </span>
+                  <span className="text-sm text-slate-500">
+                    {formatDateTime(activeTake.clientContactsSharedAt)}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTake.status === 'COMPLETED_PENDING' && (
+            <div className="mt-4 pt-4 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={handleConfirmComplete}
+                disabled={saving}
+                className="bg-green-600 text-white px-6 py-3 rounded hover:bg-green-700 font-medium disabled:opacity-50"
+              >
+                ✅ Подтвердить выполнение
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      <form onSubmit={handleSave} className="flex flex-col gap-6">
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold mb-4">Данные заявки</h2>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-slate-600 mb-1">
+                Рубрика *
+              </label>
+              <input
+                type="text"
+                value={order.category}
+                onChange={(e) =>
+                  setOrder({ ...order, category: e.target.value })
+                }
+                required
+                className="w-full border border-slate-300 rounded px-3 py-2"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm text-slate-600 mb-1">Город</label>
+              <input
+                type="text"
+                value={order.city || ''}
+                onChange={(e) => setOrder({ ...order, city: e.target.value })}
+                className="w-full border border-slate-300 rounded px-3 py-2"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-sm text-slate-600 mb-1">
+                Дата и время *
+              </label>
+              <input
+                type="datetime-local"
+                value={toLocalDatetime(order.startAt)}
+                onChange={(e) =>
+                  setOrder({
+                    ...order,
+                    startAt: e.target.value
+                      ? new Date(e.target.value).toISOString()
+                      : null,
+                  })
+                }
+                className="w-full border border-slate-300 rounded px-3 py-2"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-sm text-slate-600 mb-1">
+                Детали
+              </label>
+              <textarea
+                value={order.description || ''}
+                onChange={(e) =>
+                  setOrder({ ...order, description: e.target.value })
+                }
+                rows={3}
+                className="w-full border border-slate-300 rounded px-3 py-2"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow p-6 border-l-4 border-purple-400">
+          <h2 className="text-lg font-semibold mb-2">
+            👤 Данные клиента (не уходят в группы и приложение)
+          </h2>
+          <p className="text-sm text-slate-500 mb-4">
+            Видны только диспетчеру. Исполнитель получит их после нажатия
+            кнопки «Поделиться контактами».
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-slate-600 mb-1">
+                Имя клиента
+              </label>
+              <input
+                type="text"
+                value={order.clientName || ''}
+                onChange={(e) =>
+                  setOrder({ ...order, clientName: e.target.value })
+                }
+                placeholder="Иван Петрович"
+                disabled={contactsShared}
+                className={`w-full border border-slate-300 rounded px-3 py-2 ${
+                  contactsShared ? 'bg-slate-100 text-slate-500' : ''
+                }`}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm text-slate-600 mb-1">
+                Телефон клиента
+              </label>
+              <input
+                type="text"
+                value={order.clientPhone || ''}
+                onChange={(e) =>
+                  setOrder({ ...order, clientPhone: e.target.value })
+                }
+                placeholder="+7 999 123-45-67"
+                disabled={contactsShared}
+                className={`w-full border border-slate-300 rounded px-3 py-2 ${
+                  contactsShared ? 'bg-slate-100 text-slate-500' : ''
+                }`}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold mb-4">Исполнитель (вручную)</h2>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-slate-600 mb-1">Имя</label>
+              <input
+                type="text"
+                value={order.assigneeName || ''}
+                onChange={(e) =>
+                  setOrder({ ...order, assigneeName: e.target.value })
+                }
+                placeholder="Иван Петров"
+                className="w-full border border-slate-300 rounded px-3 py-2"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm text-slate-600 mb-1">
+                Телефон
+              </label>
+              <input
+                type="text"
+                value={order.assigneePhone || ''}
+                onChange={(e) =>
+                  setOrder({ ...order, assigneePhone: e.target.value })
+                }
+                placeholder="+7 999 123-45-67"
+                className="w-full border border-slate-300 rounded px-3 py-2"
+              />
+            </div>
+
+            {ownerSuggest && (
+              <div className="md:col-span-2 bg-blue-50 border border-blue-200 rounded p-3 text-sm">
+                <div className="text-blue-900 font-medium mb-1">
+                  🔍 Найден в базе владельцев:
+                </div>
+                <div className="text-slate-700">
+                  <b>{ownerSuggest.name}</b>
+                  {ownerSuggest.company && ` · ${ownerSuggest.company}`}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setOrder({ ...order, assigneeName: ownerSuggest.name })
+                    }
+                    className="ml-3 text-blue-600 hover:underline text-xs"
+                  >
+                    Подставить имя
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ✅ Блок создания нового исполнителя */}
+          {showCreateOwnerBlock && !showCreate && (
+            <div className="mt-4 bg-amber-50 border border-amber-200 rounded p-4">
+              <div className="font-medium text-amber-900 mb-1">
+                ⚠️ Такого исполнителя нет в базе
+              </div>
+              <div className="text-sm text-amber-700 mb-3">
+                Добавить нового владельца техники?
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCreate(true)}
+                className="bg-amber-600 text-white px-4 py-2 rounded hover:bg-amber-700 text-sm font-medium"
+              >
+                + Создать исполнителя
+              </button>
+            </div>
+          )}
+
+          {showCreate && (
+            <div className="mt-4 bg-slate-50 border border-slate-200 rounded p-4">
+              <div className="flex justify-between items-center mb-3">
+                <div className="font-medium text-slate-900">
+                  🆕 Новый исполнитель
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowCreate(false)}
+                  className="text-slate-500 hover:text-slate-900 text-sm"
+                >
+                  ✕ Отмена
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-slate-600 mb-1">
+                    Город *
+                  </label>
+                  <select
+                    value={newOwnerCity}
+                    onChange={(e) => setNewOwnerCity(e.target.value)}
+                    className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
+                  >
+                    <option value="">— Выберите —</option>
+                    {availableCities.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-600 mb-1">
+                    Имя
+                  </label>
+                  <input
+                    type="text"
+                    value={order.assigneeName || ''}
+                    readOnly
+                    className="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-slate-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-600 mb-1">
+                    Телефон
+                  </label>
+                  <input
+                    type="text"
+                    value={order.assigneePhone || ''}
+                    readOnly
+                    className="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-slate-100"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-xs text-slate-600 mb-1">
+                    Рубрики (минимум 1) *
+                  </label>
+                  <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto border border-slate-200 rounded p-2 bg-white">
+                    {VEHICLE_CATEGORIES.map((cat) => {
+                      const checked = newOwnerCategories.includes(cat);
+                      return (
+                        <label
+                          key={cat}
+                          className={`cursor-pointer px-3 py-1 rounded-full text-xs border ${
+                            checked
+                              ? 'bg-amber-500 text-white border-amber-500'
+                              : 'bg-white text-slate-700 border-slate-300'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            className="hidden"
+                            checked={checked}
+                            onChange={() => {
+                              setNewOwnerCategories((prev) =>
+                                prev.includes(cat)
+                                  ? prev.filter((c) => c !== cat)
+                                  : [...prev, cat],
+                              );
+                            }}
+                          />
+                          {cat}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <button
+                  type="button"
+                  onClick={handleCreateOwner}
+                  disabled={creating}
+                  className="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700 text-sm font-medium disabled:opacity-50"
+                >
+                  {creating ? 'Создаём...' : '💾 Создать исполнителя'}
+                </button>
+                <p className="text-xs text-slate-500 mt-2">
+                  Остальные данные (адрес, компания) можно будет дозаполнить в
+                  карточке «Владельцы техники».
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold mb-4">Финансы</h2>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-slate-600 mb-1">
+                💰 Сумма оборота, ₽ *
+              </label>
+              <input
+                type="number"
+                value={order.orderAmount ?? ''}
+                onChange={(e) =>
+                  setOrder({
+                    ...order,
+                    orderAmount: e.target.value
+                      ? Number(e.target.value)
+                      : null,
+                  })
+                }
+                required
+                min="1"
+                className="w-full border border-slate-300 rounded px-3 py-2"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm text-slate-600 mb-1">
+                📊 Диспетчерские, ₽ *
+              </label>
+              <input
+                type="number"
+                value={order.commissionAmount ?? ''}
+                onChange={(e) =>
+                  setOrder({
+                    ...order,
+                    commissionAmount: e.target.value
+                      ? Number(e.target.value)
+                      : null,
+                  })
+                }
+                required
+                min="1"
+                className="w-full border border-slate-300 rounded px-3 py-2"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold mb-4">Диспетчер</h2>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-slate-600 mb-1">Имя</label>
+              <input
+                type="text"
+                value={order.dispatcher}
+                onChange={(e) =>
+                  setOrder({ ...order, dispatcher: e.target.value })
+                }
+                className="w-full border border-slate-300 rounded px-3 py-2"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-slate-600 mb-1">
+                Телефон
+              </label>
+              <input
+                type="text"
+                value={order.dispatcherPhone}
+                onChange={(e) =>
+                  setOrder({ ...order, dispatcherPhone: e.target.value })
+                }
+                className="w-full border border-slate-300 rounded px-3 py-2"
+              />
+            </div>
+          </div>
+        </div>
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 rounded p-3">
+            {error}
+          </div>
+        )}
+
+        <div className="bg-white rounded-lg shadow p-6 flex flex-wrap gap-3">
+          <button
+            type="submit"
+            disabled={saving || isFullyClosed}
+            className="bg-slate-900 text-white px-6 py-3 rounded hover:bg-slate-700 disabled:opacity-50 font-medium"
+          >
+            {saving ? 'Сохраняем...' : saved ? '✅ Сохранено' : '💾 Сохранить'}
+          </button>
+
+          {/* ✅ Кнопка видна, только если есть группы */}
+          {canCloseSearch && (
+            <button
+              type="button"
+              onClick={handleCloseSearch}
+              disabled={saving}
+              className="bg-yellow-100 text-yellow-800 px-6 py-3 rounded hover:bg-yellow-200 font-medium"
+            >
+              🔒 Закрыть поиск
+            </button>
+          )}
+
+          {canReopen && (
+            <button
+              type="button"
+              onClick={handleReopen}
+              disabled={saving}
+              className="bg-white border border-slate-300 px-6 py-3 rounded hover:bg-slate-100"
+            >
+              🔓 Переоткрыть поиск
+            </button>
+          )}
+
+          {order.status === 'ACTIVE' && (
+            <>
+              <button
+                type="button"
+                onClick={() => handleComplete('SUCCESS')}
+                disabled={saving}
+                className="bg-green-600 text-white px-6 py-3 rounded hover:bg-green-700 font-medium"
+              >
+                ✅ Завершить успешно
+              </button>
+              <button
+                type="button"
+                onClick={() => handleComplete('FAIL')}
+                disabled={saving}
+                className="bg-red-50 text-red-700 px-6 py-3 rounded hover:bg-red-100 font-medium"
+              >
+                ❌ Без сделки
+              </button>
+            </>
+          )}
+        </div>
+      </form>
+    </div>
+  );
+}
