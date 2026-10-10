@@ -106,6 +106,7 @@ export async function POST(req: NextRequest) {
       commissionAmount: Number(commissionAmount),
       partnerId: scope.partnerId,
       publishedInApp: !!publishedInApp,
+      closedInApp: false,
       clientName: clientName ? String(clientName).trim() : null,
       clientPhone: clientPhone ? String(clientPhone).trim() : null,
       groups: validGroupIds.length
