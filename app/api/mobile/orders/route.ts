@@ -43,9 +43,9 @@ export async function GET(req: NextRequest) {
     where: {
       status: 'ACTIVE',
       publishedInApp: true,
+      closedInApp: false,
       city: { in: cities },
       category: { in: categories },
-      // ✅ Исключаем заявки со взятием в статусах TAKEN и COMPLETED_PENDING
       takes: {
         none: {
           status: { in: ['TAKEN', 'COMPLETED_PENDING'] },
