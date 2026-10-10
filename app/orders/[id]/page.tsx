@@ -96,11 +96,29 @@ export default function OrderPage() {
   const [availableCities, setAvailableCities] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
 
-  const reloadOrder = async () => {
+    const reloadOrder = async () => {
     const r = await fetch(`/api/orders/${id}`);
     if (r.ok) {
       const data = await r.json();
-      setOrder(data);
+      // ✅ Не затираем поля «Исполнитель», если пользователь их редактирует
+      setOrder((prev) => {
+        if (!prev) return data;
+
+        const userEditedName =
+          prev.assigneeName !== null &&
+          prev.assigneeName !== '' &&
+          prev.assigneeName !== data.assigneeName;
+        const userEditedPhone =
+          prev.assigneePhone !== null &&
+          prev.assigneePhone !== '' &&
+          prev.assigneePhone !== data.assigneePhone;
+
+        return {
+          ...data,
+          assigneeName: userEditedName ? prev.assigneeName : data.assigneeName,
+          assigneePhone: userEditedPhone ? prev.assigneePhone : data.assigneePhone,
+        };
+      });
     }
   };
 
