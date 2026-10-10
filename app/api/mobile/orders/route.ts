@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
     where: {
       status: 'ACTIVE',
       publishedInApp: true,
-      closedInApp: false,
+      NOT: { closedInApp: true },
       city: { in: cities },
       category: { in: categories },
       takes: {
