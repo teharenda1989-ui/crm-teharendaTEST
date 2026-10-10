@@ -799,15 +799,18 @@ export default function OrderPage() {
                   </select>
                 </div>
 
-                <div>
+                                <div>
                   <label className="block text-xs text-slate-600 mb-1">
                     Имя
                   </label>
                   <input
                     type="text"
                     value={order.assigneeName || ''}
-                    readOnly
-                    className="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-slate-100"
+                    onChange={(e) =>
+                      setOrder({ ...order, assigneeName: e.target.value })
+                    }
+                    placeholder="Введите имя"
+                    className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
                   />
                 </div>
 
@@ -818,8 +821,11 @@ export default function OrderPage() {
                   <input
                     type="text"
                     value={order.assigneePhone || ''}
-                    readOnly
-                    className="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-slate-100"
+                    onChange={(e) =>
+                      setOrder({ ...order, assigneePhone: e.target.value })
+                    }
+                    placeholder="+7 999 123-45-67"
+                    className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
                   />
                 </div>
 
