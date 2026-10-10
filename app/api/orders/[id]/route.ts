@@ -112,6 +112,7 @@ export async function PATCH(
     });
   }
 
+  // Финальные значения для проверки
   const newAssigneePhone =
     body.assigneePhone !== undefined
       ? body.assigneePhone
@@ -126,6 +127,9 @@ export async function PATCH(
     String(newAssigneePhone).replace(/\D/g, '').length >= 10 &&
     newAssigneeName;
 
+  // ✅ Если вписали исполнителя вручную и заявка была активна:
+  //    - закрываем поиск в группах (если были)
+  //    - убираем из приложения (если публиковали)
   if (
     hasAssignee &&
     existing.status === 'ACTIVE' &&
@@ -133,6 +137,18 @@ export async function PATCH(
   ) {
     data.closedInTelegram = true;
     data.closedInTelegramAt = new Date();
+
+    if (existing.publishedInApp) {
+      data.closedInApp = true;
+    }
+  } else if (
+    hasAssignee &&
+    existing.status === 'ACTIVE' &&
+    existing.publishedInApp &&
+    !existing.closedInApp
+  ) {
+    // Заявка без групп, только в приложении — просто убираем из поиска
+    data.closedInApp = true;
   }
 
   const order = await prisma.order.update({
