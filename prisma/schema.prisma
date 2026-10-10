@@ -149,6 +149,7 @@ model Order {
   result             String?
   closedInTelegram   Boolean   @default(false)
   closedInTelegramAt DateTime?
+  closedInApp        Boolean   @default(false)
 
   assigneeName  String?
   assigneePhone String?
