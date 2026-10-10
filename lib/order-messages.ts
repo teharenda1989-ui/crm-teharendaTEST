@@ -13,11 +13,6 @@ import { getMaxTokenForPartner } from './max-token';
 
 type Mode = 'close' | 'reopen';
 
-/**
- * Редактирует сообщения заявки во всех группах TG/MAX.
- * mode = 'close'  → редактирует на "🔒 ЗАЯВКА ЗАКРЫТА"
- * mode = 'reopen' → редактирует на "🚜 Новая заявка"
- */
 async function editOrderMessages(orderId: string, mode: Mode) {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
@@ -45,7 +40,6 @@ async function editOrderMessages(orderId: string, mode: Mode) {
       ? buildClosedOrderMessageMax(payload)
       : buildOrderMessageMax(payload);
 
-  // Уникальные пары chatId+messageId
   const seen = new Set<string>();
   const targets: {
     chatId: string;
@@ -89,12 +83,12 @@ async function editOrderMessages(orderId: string, mode: Mode) {
   }
 }
 
-/** Закрыть заявку в группах (редактирует сообщения на «🔒 ЗАКРЫТА») */
+/** Закрыть заявку в группах TG/MAX */
 export async function closeOrderInGroups(orderId: string) {
   await editOrderMessages(orderId, 'close');
 }
 
-/** Открыть заявку заново в группах (редактирует на «🚜 Новая заявка») */
+/** Открыть заявку в группах TG/MAX */
 export async function reopenOrderInGroups(orderId: string) {
   await editOrderMessages(orderId, 'reopen');
 }
