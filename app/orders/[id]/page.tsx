@@ -385,9 +385,12 @@ export default function OrderPage() {
   const hasGroups = order.groups.length > 0;
   const canCloseSearch =
     order.status === 'ACTIVE' && hasGroups && !order.closedInTelegram;
-  const canReopen =
-    order.status === 'ACTIVE' && hasGroups && order.closedInTelegram;
-
+    const canReopen =
+    order.status === 'ACTIVE' &&
+    hasGroups &&
+    order.closedInTelegram &&
+    !activeTake;
+  
   const activeTake = order.takes?.find(
     (t) => t.status === 'TAKEN' || t.status === 'COMPLETED_PENDING',
   );
