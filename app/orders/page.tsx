@@ -26,11 +26,6 @@ export default async function OrdersPage({ searchParams }: Props) {
     statusFilter = { status: 'ACTIVE' };
   } else if (filter === 'details') {
     statusFilter = { status: 'ACTIVE', closedInTelegram: true };
-  } else if (filter === 'inwork') {
-    statusFilter = {
-      status: 'ACTIVE',
-      takes: { some: { status: { in: ['TAKEN', 'COMPLETED_PENDING'] } } },
-    };
   } else if (filter === 'success') {
     statusFilter = { status: 'CLOSED', result: 'SUCCESS' };
   } else if (filter === 'fail') {
@@ -39,21 +34,42 @@ export default async function OrdersPage({ searchParams }: Props) {
 
   const orders = await prisma.order.findMany({
     where: { ...scopeWhere(scope), ...statusFilter },
-    include: {
-      groups: { include: { group: true } },
+    select: {
+      id: true,
+      category: true,
+      city: true,
+      when: true,
+      description: true,
+      dispatcher: true,
+      dispatcherPhone: true,
+      status: true,
+      result: true,
+      closedInTelegram: true,
+      closedInApp: true,
+      assigneeName: true,
+      assigneePhone: true,
+      orderAmount: true,
+      commissionAmount: true,
+      publishedInApp: true,
+      createdAt: true,
+      _count: { select: { groups: true } },
       takes: {
         where: { status: { in: ['TAKEN', 'COMPLETED_PENDING'] } },
+        select: {
+          status: true,
+          clientContactsShared: true,
+        },
         orderBy: { takenAt: 'desc' },
         take: 1,
       },
     },
     orderBy: { createdAt: 'desc' },
+    take: 100,
   });
 
   const tabs = [
     { key: 'active', label: '🟢 Активные' },
-    { key: 'details', label: '☎️ Уточнение деталей' },
-    { key: 'inwork', label: '⏳ В работе' },
+    { key: 'details', label: '⏳ В работе' },
     { key: 'success', label: '✅ Успешные' },
     { key: 'fail', label: '❌ Без сделки' },
     { key: 'all', label: '📋 Все' },
@@ -61,8 +77,8 @@ export default async function OrdersPage({ searchParams }: Props) {
 
   return (
     <div>
-      {/* ✅ Уменьшили частоту автообновления — не тормозит */}
-      <AutoRefresh interval={15000} />
+      {/* ✅ Реже автообновление — раз в 30 сек, чтобы не мешало переключению */}
+      <AutoRefresh interval={30000} />
 
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">Заявки</h1>
@@ -79,7 +95,6 @@ export default async function OrdersPage({ searchParams }: Props) {
           <Link
             key={t.key}
             href={`/orders?filter=${t.key}`}
-            prefetch={false}
             className={`px-4 py-2 rounded text-sm ${
               filter === t.key
                 ? 'bg-slate-900 text-white'
@@ -99,10 +114,10 @@ export default async function OrdersPage({ searchParams }: Props) {
         <div className="flex flex-col gap-3">
           {orders.map((order) => {
             const isFullyClosed = order.status === 'CLOSED';
+            const hasGroups = (order._count?.groups ?? 0) > 0;
             const isInWork =
               order.status === 'ACTIVE' &&
               (order.closedInTelegram || order.closedInApp);
-            const hasGroups = order.groups.length > 0;
             const isNewWithSend =
               order.status === 'ACTIVE' && !order.closedInTelegram && hasGroups;
             const isNewNoSend =
@@ -116,7 +131,6 @@ export default async function OrdersPage({ searchParams }: Props) {
               <Link
                 key={order.id}
                 href={`/orders/${order.id}`}
-                prefetch={false}
                 className={`rounded-lg shadow hover:shadow-md transition p-5 block border-l-4 ${
                   isFullyClosed
                     ? 'bg-slate-50 border-l-slate-300'
