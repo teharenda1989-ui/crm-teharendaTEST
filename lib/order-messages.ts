@@ -3,15 +3,17 @@ import {
   editTelegramMessage,
   buildOrderMessage,
   buildClosedOrderMessage,
+  buildDeletedOrderMessage,
 } from './telegram';
 import {
   editMaxMessage,
   buildOrderMessageMax,
   buildClosedOrderMessageMax,
+  buildDeletedOrderMessageMax,
 } from './max';
 import { getMaxTokenForPartner } from './max-token';
 
-type Mode = 'close' | 'reopen';
+type Mode = 'close' | 'reopen' | 'delete';
 
 async function editOrderMessages(orderId: string, mode: Mode) {
   const order = await prisma.order.findUnique({
@@ -30,15 +32,19 @@ async function editOrderMessages(orderId: string, mode: Mode) {
     dispatcherPhone: order.dispatcherPhone,
   };
 
-  const textTg =
-    mode === 'close'
-      ? buildClosedOrderMessage(payload)
-      : buildOrderMessage(payload);
+  let textTg: string;
+  let textMax: string;
 
-  const textMax =
-    mode === 'close'
-      ? buildClosedOrderMessageMax(payload)
-      : buildOrderMessageMax(payload);
+  if (mode === 'close') {
+    textTg = buildClosedOrderMessage(payload);
+    textMax = buildClosedOrderMessageMax(payload);
+  } else if (mode === 'delete') {
+    textTg = buildDeletedOrderMessage(payload);
+    textMax = buildDeletedOrderMessageMax(payload);
+  } else {
+    textTg = buildOrderMessage(payload);
+    textMax = buildOrderMessageMax(payload);
+  }
 
   const seen = new Set<string>();
   const targets: {
@@ -83,12 +89,14 @@ async function editOrderMessages(orderId: string, mode: Mode) {
   }
 }
 
-/** Закрыть заявку в группах TG/MAX */
 export async function closeOrderInGroups(orderId: string) {
   await editOrderMessages(orderId, 'close');
 }
 
-/** Открыть заявку в группах TG/MAX */
 export async function reopenOrderInGroups(orderId: string) {
   await editOrderMessages(orderId, 'reopen');
+}
+
+export async function markOrderAsDeleted(orderId: string) {
+  await editOrderMessages(orderId, 'delete');
 }
