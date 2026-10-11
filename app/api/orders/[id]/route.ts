@@ -151,13 +151,27 @@ export async function PATCH(
     data.closedInApp = true;
   }
 
-  const order = await prisma.order.update({
+    const order = await prisma.order.update({
     where: { id: params.id },
     data,
     include: {
       groups: { include: { group: true } },
     },
   });
+
+  // ✅ Если вписали исполнителя вручную и есть группы — закрываем сообщения в TG/MAX
+  if (
+    hasAssignee &&
+    existing.status === 'ACTIVE' &&
+    !existing.closedInTelegram &&
+    order.groups.length > 0
+  ) {
+    try {
+      await closeOrderInGroups(order.id);
+    } catch (e) {
+      console.error('Failed to close order in groups:', e);
+    }
+  }
 
   return NextResponse.json(order);
 }
