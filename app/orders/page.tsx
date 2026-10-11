@@ -91,7 +91,9 @@ export default async function OrdersPage({ searchParams }: Props) {
         <div className="flex flex-col gap-3">
           {orders.map((order) => {
             const isFullyClosed = order.status === 'CLOSED';
-            const isInWork = order.status === 'ACTIVE' && order.closedInTelegram;
+                        const isInWork =
+              order.status === 'ACTIVE' &&
+              (order.closedInTelegram || order.closedInApp);
             const hasGroups = order.groups.length > 0;
             const isNewWithSend =
               order.status === 'ACTIVE' && !order.closedInTelegram && hasGroups;
