@@ -163,3 +163,18 @@ export function buildClosedOrderMessage(order: {
   lines.push(`☎️ ${maskPhone(order.dispatcherPhone)}`);
   return lines.join('\n');
 }
+
+// ✅ Новое: сообщение при удалении заявки
+export function buildDeletedOrderMessage(order: {
+  category: string;
+  city?: string | null;
+  when: string;
+}): string {
+  const lines: string[] = [];
+  lines.push('🗑 <b>ЗАЯВКА УДАЛЕНА</b>');
+  lines.push('');
+  lines.push(`<b>Тип:</b> ${order.category}`);
+  if (order.city) lines.push(`<b>Город:</b> ${order.city}`);
+  lines.push(`<b>Когда:</b> ${order.when}`);
+  return lines.join('\n');
+}
