@@ -200,10 +200,9 @@ export default function OrderPage() {
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Ошибка');
-      setSaved(true);
-
-      router.push('/orders');
-      router.refresh();
+            setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+      await reloadOrder();
     } catch (e: any) {
       setError(e.message);
     } finally {
