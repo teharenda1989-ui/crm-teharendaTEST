@@ -68,7 +68,7 @@ export default async function OrdersPage({ searchParams }: Props) {
   });
 
   const tabs = [
-    { key: 'active', label: '🟢 Активные' },
+    { key: 'active', label: '🆕 Новые заявки' },
     { key: 'details', label: '⏳ В работе' },
     { key: 'success', label: '✅ Успешные' },
     { key: 'fail', label: '❌ Без сделки' },
