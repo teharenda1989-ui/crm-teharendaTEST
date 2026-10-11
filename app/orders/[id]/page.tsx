@@ -96,11 +96,10 @@ export default function OrderPage() {
   const [availableCities, setAvailableCities] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
 
-    const reloadOrder = async () => {
+  const reloadOrder = async () => {
     const r = await fetch(`/api/orders/${id}`);
     if (r.ok) {
       const data = await r.json();
-      // ✅ Не затираем поля «Исполнитель», если пользователь их редактирует
       setOrder((prev) => {
         if (!prev) return data;
 
@@ -116,7 +115,9 @@ export default function OrderPage() {
         return {
           ...data,
           assigneeName: userEditedName ? prev.assigneeName : data.assigneeName,
-          assigneePhone: userEditedPhone ? prev.assigneePhone : data.assigneePhone,
+          assigneePhone: userEditedPhone
+            ? prev.assigneePhone
+            : data.assigneePhone,
         };
       });
     }
@@ -162,7 +163,6 @@ export default function OrderPage() {
     setOwnerSuggest(found || null);
   }, [order?.assigneePhone, owners]);
 
-  // При открытии блока — предвыбираем город заявки
   useEffect(() => {
     if (showCreate && order?.city && !newOwnerCity) {
       setNewOwnerCity(order.city);
@@ -200,7 +200,9 @@ export default function OrderPage() {
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Ошибка');
-            setSaved(true);
+
+      // ✅ Остаёмся на той же странице, показываем «Сохранено» на 2.5 сек
+      setSaved(true);
       setTimeout(() => setSaved(false), 2500);
       await reloadOrder();
     } catch (e: any) {
@@ -239,7 +241,6 @@ export default function OrderPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Ошибка создания');
 
-      // Перезагружаем список владельцев + сбрасываем блок
       const ownersRes = await fetch('/api/owners');
       const ownersData = await ownersRes.json();
       setOwners(ownersData);
@@ -287,10 +288,10 @@ export default function OrderPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Ошибка');
       alert('✅ Заявка подтверждена как выполненная');
-      router.push('/orders');
-      router.refresh();
+      await reloadOrder();
     } catch (e: any) {
       setError(e.message);
+    } finally {
       setSaving(false);
     }
   };
@@ -354,8 +355,7 @@ export default function OrderPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Ошибка');
-      router.push('/orders');
-      router.refresh();
+      await reloadOrder();
     } catch (e: any) {
       setError(e.message);
       setSaving(false);
@@ -385,8 +385,6 @@ export default function OrderPage() {
     order.status === 'ACTIVE' && hasGroups && !order.closedInTelegram;
   const canReopen =
     order.status === 'ACTIVE' && hasGroups && order.closedInTelegram;
-  const canComplete =
-    order.status === 'ACTIVE' && (!hasGroups || order.closedInTelegram);
 
   const activeTake = order.takes?.find(
     (t) => t.status === 'TAKEN' || t.status === 'COMPLETED_PENDING',
@@ -403,13 +401,20 @@ export default function OrderPage() {
     );
   };
 
-  // «Такой владелец не найден» — показываем блок создания, если введён телефон и имя, а владельца нет
   const showCreateOwnerBlock =
     !ownerSuggest &&
     order.assigneePhone &&
     order.assigneePhone.replace(/\D/g, '').length >= 10 &&
     order.assigneeName &&
     order.assigneeName.trim().length > 0;
+
+  // ✅ Кнопки «Завершить» показываем только когда исполнитель определён
+  const canCompleteOrder =
+    order.status === 'ACTIVE' &&
+    (!!activeTake ||
+      (order.assigneeName &&
+        order.assigneePhone &&
+        order.assigneePhone.replace(/\D/g, '').length >= 10));
 
   return (
     <div className="max-w-4xl">
@@ -763,7 +768,6 @@ export default function OrderPage() {
             )}
           </div>
 
-          {/* ✅ Блок создания нового исполнителя */}
           {showCreateOwnerBlock && !showCreate && (
             <div className="mt-4 bg-amber-50 border border-amber-200 rounded p-4">
               <div className="font-medium text-amber-900 mb-1">
@@ -797,6 +801,11 @@ export default function OrderPage() {
                 </button>
               </div>
 
+              <div className="mb-3 text-sm text-slate-600">
+                Имя: <b>{order.assigneeName}</b>, телефон:{' '}
+                <b>{order.assigneePhone}</b>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs text-slate-600 mb-1">
@@ -814,36 +823,6 @@ export default function OrderPage() {
                       </option>
                     ))}
                   </select>
-                </div>
-
-                                <div>
-                  <label className="block text-xs text-slate-600 mb-1">
-                    Имя
-                  </label>
-                  <input
-                    type="text"
-                    value={order.assigneeName || ''}
-                    onChange={(e) =>
-                      setOrder({ ...order, assigneeName: e.target.value })
-                    }
-                    placeholder="Введите имя"
-                    className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs text-slate-600 mb-1">
-                    Телефон
-                  </label>
-                  <input
-                    type="text"
-                    value={order.assigneePhone || ''}
-                    onChange={(e) =>
-                      setOrder({ ...order, assigneePhone: e.target.value })
-                    }
-                    placeholder="+7 999 123-45-67"
-                    className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
-                  />
                 </div>
 
                 <div className="md:col-span-2">
@@ -994,7 +973,6 @@ export default function OrderPage() {
             {saving ? 'Сохраняем...' : saved ? '✅ Сохранено' : '💾 Сохранить'}
           </button>
 
-          {/* ✅ Кнопка видна, только если есть группы */}
           {canCloseSearch && (
             <button
               type="button"
@@ -1017,7 +995,7 @@ export default function OrderPage() {
             </button>
           )}
 
-          {order.status === 'ACTIVE' && (
+          {canCompleteOrder && (
             <>
               <button
                 type="button"
