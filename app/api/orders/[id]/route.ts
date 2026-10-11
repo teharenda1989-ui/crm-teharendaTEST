@@ -193,6 +193,13 @@ export async function DELETE(
     return NextResponse.json({ error: 'Заявка не найдена' }, { status: 404 });
   }
 
+    // ✅ Сначала редактируем сообщения в TG/MAX на «🗑 ЗАЯВКА УДАЛЕНА»
+  try {
+    await markOrderAsDeleted(params.id);
+  } catch (e) {
+    console.error('Failed to mark order as deleted in groups:', e);
+  }
+
   await prisma.messageLog.deleteMany({ where: { orderId: params.id } });
   await prisma.orderGroup.deleteMany({ where: { orderId: params.id } });
   await prisma.orderTake.deleteMany({ where: { orderId: params.id } });
