@@ -89,7 +89,6 @@ export default function OrderPage() {
   const [owners, setOwners] = useState<Owner[]>([]);
   const [ownerSuggest, setOwnerSuggest] = useState<Owner | null>(null);
 
-  // Блок «Создать исполнителя»
   const [showCreate, setShowCreate] = useState(false);
   const [newOwnerCity, setNewOwnerCity] = useState('');
   const [newOwnerCategories, setNewOwnerCategories] = useState<string[]>([]);
@@ -140,7 +139,6 @@ export default function OrderPage() {
       .catch(() => {});
   }, [id]);
 
-  // Автообновление каждые 5 секунд
   useEffect(() => {
     const interval = setInterval(() => {
       reloadOrder();
@@ -201,7 +199,6 @@ export default function OrderPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Ошибка');
 
-      // ✅ Остаёмся на той же странице, показываем «Сохранено» на 2.5 сек
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
       await reloadOrder();
@@ -325,7 +322,12 @@ export default function OrderPage() {
   };
 
   const handleReopen = async () => {
-    if (!confirm('Переоткрыть поиск?')) return;
+    if (
+      !confirm(
+        'Переоткрыть поиск? Исполнитель, вписанный вручную, будет очищен.',
+      )
+    )
+      return;
     setSaving(true);
     try {
       const res = await fetch(`/api/orders/${id}/reopen`, { method: 'POST' });
@@ -403,18 +405,19 @@ export default function OrderPage() {
 
   const showCreateOwnerBlock =
     !ownerSuggest &&
+    !activeTake &&
     order.assigneePhone &&
     order.assigneePhone.replace(/\D/g, '').length >= 10 &&
     order.assigneeName &&
     order.assigneeName.trim().length > 0;
 
-  // ✅ Кнопки «Завершить» показываем только когда исполнитель определён
+  // ✅ Кнопки "Завершить/Без сделки" — только для ручного исполнителя (нет activeTake)
   const canCompleteOrder =
     order.status === 'ACTIVE' &&
-    (!!activeTake ||
-      (order.assigneeName &&
-        order.assigneePhone &&
-        order.assigneePhone.replace(/\D/g, '').length >= 10));
+    !activeTake &&
+    !!order.assigneeName &&
+    !!order.assigneePhone &&
+    order.assigneePhone.replace(/\D/g, '').length >= 10;
 
   return (
     <div className="max-w-4xl">
@@ -714,170 +717,175 @@ export default function OrderPage() {
           </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-semibold mb-4">Исполнитель (вручную)</h2>
+        {/* ✅ Блок "Исполнитель (вручную)" — только если НЕ взяли из приложения */}
+        {!activeTake && (
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-lg font-semibold mb-4">
+              Исполнитель (вручную)
+            </h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-slate-600 mb-1">Имя</label>
-              <input
-                type="text"
-                value={order.assigneeName || ''}
-                onChange={(e) =>
-                  setOrder({ ...order, assigneeName: e.target.value })
-                }
-                placeholder="Иван Петров"
-                className="w-full border border-slate-300 rounded px-3 py-2"
-              />
-            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-slate-600 mb-1">Имя</label>
+                <input
+                  type="text"
+                  value={order.assigneeName || ''}
+                  onChange={(e) =>
+                    setOrder({ ...order, assigneeName: e.target.value })
+                  }
+                  placeholder="Иван Петров"
+                  className="w-full border border-slate-300 rounded px-3 py-2"
+                />
+              </div>
 
-            <div>
-              <label className="block text-sm text-slate-600 mb-1">
-                Телефон
-              </label>
-              <input
-                type="text"
-                value={order.assigneePhone || ''}
-                onChange={(e) =>
-                  setOrder({ ...order, assigneePhone: e.target.value })
-                }
-                placeholder="+7 999 123-45-67"
-                className="w-full border border-slate-300 rounded px-3 py-2"
-              />
-            </div>
+              <div>
+                <label className="block text-sm text-slate-600 mb-1">
+                  Телефон
+                </label>
+                <input
+                  type="text"
+                  value={order.assigneePhone || ''}
+                  onChange={(e) =>
+                    setOrder({ ...order, assigneePhone: e.target.value })
+                  }
+                  placeholder="+7 999 123-45-67"
+                  className="w-full border border-slate-300 rounded px-3 py-2"
+                />
+              </div>
 
-            {ownerSuggest && (
-              <div className="md:col-span-2 bg-blue-50 border border-blue-200 rounded p-3 text-sm">
-                <div className="text-blue-900 font-medium mb-1">
-                  🔍 Найден в базе владельцев:
+              {ownerSuggest && (
+                <div className="md:col-span-2 bg-blue-50 border border-blue-200 rounded p-3 text-sm">
+                  <div className="text-blue-900 font-medium mb-1">
+                    🔍 Найден в базе владельцев:
+                  </div>
+                  <div className="text-slate-700">
+                    <b>{ownerSuggest.name}</b>
+                    {ownerSuggest.company && ` · ${ownerSuggest.company}`}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setOrder({ ...order, assigneeName: ownerSuggest.name })
+                      }
+                      className="ml-3 text-blue-600 hover:underline text-xs"
+                    >
+                      Подставить имя
+                    </button>
+                  </div>
                 </div>
-                <div className="text-slate-700">
-                  <b>{ownerSuggest.name}</b>
-                  {ownerSuggest.company && ` · ${ownerSuggest.company}`}
+              )}
+            </div>
+
+            {showCreateOwnerBlock && !showCreate && (
+              <div className="mt-4 bg-amber-50 border border-amber-200 rounded p-4">
+                <div className="font-medium text-amber-900 mb-1">
+                  ⚠️ Такого исполнителя нет в базе
+                </div>
+                <div className="text-sm text-amber-700 mb-3">
+                  Добавить нового владельца техники?
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowCreate(true)}
+                  className="bg-amber-600 text-white px-4 py-2 rounded hover:bg-amber-700 text-sm font-medium"
+                >
+                  + Создать исполнителя
+                </button>
+              </div>
+            )}
+
+            {showCreate && (
+              <div className="mt-4 bg-slate-50 border border-slate-200 rounded p-4">
+                <div className="flex justify-between items-center mb-3">
+                  <div className="font-medium text-slate-900">
+                    🆕 Новый исполнитель
+                  </div>
                   <button
                     type="button"
-                    onClick={() =>
-                      setOrder({ ...order, assigneeName: ownerSuggest.name })
-                    }
-                    className="ml-3 text-blue-600 hover:underline text-xs"
+                    onClick={() => setShowCreate(false)}
+                    className="text-slate-500 hover:text-slate-900 text-sm"
                   >
-                    Подставить имя
+                    ✕ Отмена
                   </button>
+                </div>
+
+                <div className="mb-3 text-sm text-slate-600">
+                  Имя: <b>{order.assigneeName}</b>, телефон:{' '}
+                  <b>{order.assigneePhone}</b>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-slate-600 mb-1">
+                      Город *
+                    </label>
+                    <select
+                      value={newOwnerCity}
+                      onChange={(e) => setNewOwnerCity(e.target.value)}
+                      className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
+                    >
+                      <option value="">— Выберите —</option>
+                      {availableCities.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-xs text-slate-600 mb-1">
+                      Рубрики (минимум 1) *
+                    </label>
+                    <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto border border-slate-200 rounded p-2 bg-white">
+                      {VEHICLE_CATEGORIES.map((cat) => {
+                        const checked = newOwnerCategories.includes(cat);
+                        return (
+                          <label
+                            key={cat}
+                            className={`cursor-pointer px-3 py-1 rounded-full text-xs border ${
+                              checked
+                                ? 'bg-amber-500 text-white border-amber-500'
+                                : 'bg-white text-slate-700 border-slate-300'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              className="hidden"
+                              checked={checked}
+                              onChange={() => {
+                                setNewOwnerCategories((prev) =>
+                                  prev.includes(cat)
+                                    ? prev.filter((c) => c !== cat)
+                                    : [...prev, cat],
+                                );
+                              }}
+                            />
+                            {cat}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <button
+                    type="button"
+                    onClick={handleCreateOwner}
+                    disabled={creating}
+                    className="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700 text-sm font-medium disabled:opacity-50"
+                  >
+                    {creating ? 'Создаём...' : '💾 Создать исполнителя'}
+                  </button>
+                  <p className="text-xs text-slate-500 mt-2">
+                    Остальные данные (адрес, компания) можно будет дозаполнить в
+                    карточке «Владельцы техники».
+                  </p>
                 </div>
               </div>
             )}
           </div>
-
-          {showCreateOwnerBlock && !showCreate && (
-            <div className="mt-4 bg-amber-50 border border-amber-200 rounded p-4">
-              <div className="font-medium text-amber-900 mb-1">
-                ⚠️ Такого исполнителя нет в базе
-              </div>
-              <div className="text-sm text-amber-700 mb-3">
-                Добавить нового владельца техники?
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowCreate(true)}
-                className="bg-amber-600 text-white px-4 py-2 rounded hover:bg-amber-700 text-sm font-medium"
-              >
-                + Создать исполнителя
-              </button>
-            </div>
-          )}
-
-          {showCreate && (
-            <div className="mt-4 bg-slate-50 border border-slate-200 rounded p-4">
-              <div className="flex justify-between items-center mb-3">
-                <div className="font-medium text-slate-900">
-                  🆕 Новый исполнитель
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowCreate(false)}
-                  className="text-slate-500 hover:text-slate-900 text-sm"
-                >
-                  ✕ Отмена
-                </button>
-              </div>
-
-              <div className="mb-3 text-sm text-slate-600">
-                Имя: <b>{order.assigneeName}</b>, телефон:{' '}
-                <b>{order.assigneePhone}</b>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-slate-600 mb-1">
-                    Город *
-                  </label>
-                  <select
-                    value={newOwnerCity}
-                    onChange={(e) => setNewOwnerCity(e.target.value)}
-                    className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
-                  >
-                    <option value="">— Выберите —</option>
-                    {availableCities.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-xs text-slate-600 mb-1">
-                    Рубрики (минимум 1) *
-                  </label>
-                  <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto border border-slate-200 rounded p-2 bg-white">
-                    {VEHICLE_CATEGORIES.map((cat) => {
-                      const checked = newOwnerCategories.includes(cat);
-                      return (
-                        <label
-                          key={cat}
-                          className={`cursor-pointer px-3 py-1 rounded-full text-xs border ${
-                            checked
-                              ? 'bg-amber-500 text-white border-amber-500'
-                              : 'bg-white text-slate-700 border-slate-300'
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            className="hidden"
-                            checked={checked}
-                            onChange={() => {
-                              setNewOwnerCategories((prev) =>
-                                prev.includes(cat)
-                                  ? prev.filter((c) => c !== cat)
-                                  : [...prev, cat],
-                              );
-                            }}
-                          />
-                          {cat}
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-4">
-                <button
-                  type="button"
-                  onClick={handleCreateOwner}
-                  disabled={creating}
-                  className="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700 text-sm font-medium disabled:opacity-50"
-                >
-                  {creating ? 'Создаём...' : '💾 Создать исполнителя'}
-                </button>
-                <p className="text-xs text-slate-500 mt-2">
-                  Остальные данные (адрес, компания) можно будет дозаполнить в
-                  карточке «Владельцы техники».
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
+        )}
 
         <div className="bg-white rounded-lg shadow p-6">
           <h2 className="text-lg font-semibold mb-4">Финансы</h2>
