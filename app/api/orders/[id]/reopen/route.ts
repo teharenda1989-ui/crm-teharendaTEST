@@ -32,6 +32,8 @@ export async function POST(
     data: {
       ...(hasGroups && { closedInTelegram: false, closedInTelegramAt: null }),
       ...(order.publishedInApp && { closedInApp: false }),
+      assigneeName: null,
+      assigneePhone: null,
     },
   });
 
