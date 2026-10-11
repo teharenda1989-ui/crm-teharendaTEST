@@ -102,6 +102,7 @@ export async function POST(
       data: {
         closedInTelegram: false,
         closedInTelegramAt: null,
+        closedInApp: false,
         assigneeName: null,
         assigneePhone: null,
       },
@@ -119,7 +120,6 @@ export async function POST(
     });
   });
 
-  // ✅ Автоматически открываем заявку заново в группах
   await reopenOrderInGroups(order.id);
 
   return NextResponse.json({ ok: true, ratingImpact });
