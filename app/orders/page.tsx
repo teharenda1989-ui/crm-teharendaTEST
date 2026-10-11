@@ -4,7 +4,7 @@ import { getScope, scopeWhere } from '@/lib/scope';
 import AutoRefresh from '@/components/AutoRefresh';
 
 export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+export const revalidate = 20;
 
 interface Props {
   searchParams: { filter?: string };
