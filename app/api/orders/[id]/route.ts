@@ -1,8 +1,10 @@
-import { closeOrderInGroups, markOrderAsDeleted } from '@/lib/order-messages';
-import { closeOrderInGroups } from '@/lib/order-messages';
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getScope, scopeWhere } from '@/lib/scope';
+import {
+  closeOrderInGroups,
+  markOrderAsDeleted,
+} from '@/lib/order-messages';
 
 export async function GET(
   _req: NextRequest,
@@ -114,7 +116,6 @@ export async function PATCH(
     });
   }
 
-  // Финальные значения для проверки
   const newAssigneePhone =
     body.assigneePhone !== undefined
       ? body.assigneePhone
@@ -129,9 +130,6 @@ export async function PATCH(
     String(newAssigneePhone).replace(/\D/g, '').length >= 10 &&
     newAssigneeName;
 
-  // ✅ Если вписали исполнителя вручную и заявка была активна:
-  //    - закрываем поиск в группах (если были)
-  //    - убираем из приложения (если публиковали)
   if (
     hasAssignee &&
     existing.status === 'ACTIVE' &&
@@ -149,11 +147,10 @@ export async function PATCH(
     existing.publishedInApp &&
     !existing.closedInApp
   ) {
-    // Заявка без групп, только в приложении — просто убираем из поиска
     data.closedInApp = true;
   }
 
-    const order = await prisma.order.update({
+  const order = await prisma.order.update({
     where: { id: params.id },
     data,
     include: {
@@ -161,7 +158,7 @@ export async function PATCH(
     },
   });
 
-  // ✅ Если вписали исполнителя вручную и есть группы — закрываем сообщения в TG/MAX
+  // ✅ Если вписали исполнителя вручную и есть группы — редактируем сообщения в TG/MAX
   if (
     hasAssignee &&
     existing.status === 'ACTIVE' &&
@@ -194,7 +191,7 @@ export async function DELETE(
     return NextResponse.json({ error: 'Заявка не найдена' }, { status: 404 });
   }
 
-    // ✅ Сначала редактируем сообщения в TG/MAX на «🗑 ЗАЯВКА УДАЛЕНА»
+  // ✅ Редактируем сообщения в TG/MAX на «🗑 ЗАЯВКА УДАЛЕНА»
   try {
     await markOrderAsDeleted(params.id);
   } catch (e) {
