@@ -22,22 +22,27 @@ export default async function OrdersPage({ searchParams }: Props) {
   const filter = searchParams.filter || 'active';
 
   let statusFilter: any = {};
-  if (filter === 'active') statusFilter = { status: 'ACTIVE' };
-  else if (filter === 'success')
-    statusFilter = { status: 'CLOSED', result: 'SUCCESS' };
-  else if (filter === 'fail')
-    statusFilter = { status: 'CLOSED', result: 'FAIL' };
-  else if (filter === 'details')
+  if (filter === 'active') {
+    statusFilter = { status: 'ACTIVE' };
+  } else if (filter === 'details') {
     statusFilter = { status: 'ACTIVE', closedInTelegram: true };
+  } else if (filter === 'inwork') {
+    statusFilter = {
+      status: 'ACTIVE',
+      takes: { some: { status: { in: ['TAKEN', 'COMPLETED_PENDING'] } } },
+    };
+  } else if (filter === 'success') {
+    statusFilter = { status: 'CLOSED', result: 'SUCCESS' };
+  } else if (filter === 'fail') {
+    statusFilter = { status: 'CLOSED', result: 'FAIL' };
+  }
 
   const orders = await prisma.order.findMany({
     where: { ...scopeWhere(scope), ...statusFilter },
     include: {
       groups: { include: { group: true } },
       takes: {
-        where: {
-          status: { in: ['TAKEN', 'COMPLETED_PENDING'] },
-        },
+        where: { status: { in: ['TAKEN', 'COMPLETED_PENDING'] } },
         orderBy: { takenAt: 'desc' },
         take: 1,
       },
@@ -48,6 +53,7 @@ export default async function OrdersPage({ searchParams }: Props) {
   const tabs = [
     { key: 'active', label: '🟢 Активные' },
     { key: 'details', label: '☎️ Уточнение деталей' },
+    { key: 'inwork', label: '⏳ В работе' },
     { key: 'success', label: '✅ Успешные' },
     { key: 'fail', label: '❌ Без сделки' },
     { key: 'all', label: '📋 Все' },
@@ -55,7 +61,8 @@ export default async function OrdersPage({ searchParams }: Props) {
 
   return (
     <div>
-      <AutoRefresh interval={4000} />
+      {/* ✅ Уменьшили частоту автообновления — не тормозит */}
+      <AutoRefresh interval={15000} />
 
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">Заявки</h1>
@@ -72,6 +79,7 @@ export default async function OrdersPage({ searchParams }: Props) {
           <Link
             key={t.key}
             href={`/orders?filter=${t.key}`}
+            prefetch={false}
             className={`px-4 py-2 rounded text-sm ${
               filter === t.key
                 ? 'bg-slate-900 text-white'
@@ -91,7 +99,7 @@ export default async function OrdersPage({ searchParams }: Props) {
         <div className="flex flex-col gap-3">
           {orders.map((order) => {
             const isFullyClosed = order.status === 'CLOSED';
-                        const isInWork =
+            const isInWork =
               order.status === 'ACTIVE' &&
               (order.closedInTelegram || order.closedInApp);
             const hasGroups = order.groups.length > 0;
@@ -108,6 +116,7 @@ export default async function OrdersPage({ searchParams }: Props) {
               <Link
                 key={order.id}
                 href={`/orders/${order.id}`}
+                prefetch={false}
                 className={`rounded-lg shadow hover:shadow-md transition p-5 block border-l-4 ${
                   isFullyClosed
                     ? 'bg-slate-50 border-l-slate-300'
