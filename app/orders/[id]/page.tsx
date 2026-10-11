@@ -357,7 +357,9 @@ export default function OrderPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Ошибка');
-      await reloadOrder();
+      // ✅ Возвращаемся в список заявок (заявка ушла в «Успешные» / «Без сделки»)
+      router.push('/orders');
+      router.refresh();
     } catch (e: any) {
       setError(e.message);
       setSaving(false);
@@ -383,17 +385,24 @@ export default function OrderPage() {
 
   const isFullyClosed = order.status === 'CLOSED';
   const hasGroups = order.groups.length > 0;
+
+  const activeTake = order.takes?.find(
+    (t) => t.status === 'TAKEN' || t.status === 'COMPLETED_PENDING',
+  );
+
   const canCloseSearch =
-    order.status === 'ACTIVE' && hasGroups && !order.closedInTelegram;
-    const canReopen =
+    order.status === 'ACTIVE' &&
+    hasGroups &&
+    !order.closedInTelegram &&
+    !activeTake;
+
+  // ✅ Переоткрыть показываем только когда НЕ взял исполнитель из приложения
+  const canReopen =
     order.status === 'ACTIVE' &&
     hasGroups &&
     order.closedInTelegram &&
     !activeTake;
-  
-  const activeTake = order.takes?.find(
-    (t) => t.status === 'TAKEN' || t.status === 'COMPLETED_PENDING',
-  );
+
   const contactsShared = activeTake?.clientContactsShared ?? false;
 
   const ratingStars = (rating: number) => {
@@ -414,7 +423,7 @@ export default function OrderPage() {
     order.assigneeName &&
     order.assigneeName.trim().length > 0;
 
-  // ✅ Кнопки "Завершить/Без сделки" — только для ручного исполнителя (нет activeTake)
+  // ✅ Кнопки "Завершить/Без сделки" — только для ручного исполнителя
   const canCompleteOrder =
     order.status === 'ACTIVE' &&
     !activeTake &&
@@ -720,7 +729,6 @@ export default function OrderPage() {
           </div>
         </div>
 
-        {/* ✅ Блок "Исполнитель (вручную)" — только если НЕ взяли из приложения */}
         {!activeTake && (
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-lg font-semibold mb-4">
