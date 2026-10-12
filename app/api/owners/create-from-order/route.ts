@@ -31,7 +31,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Неверный телефон' }, { status: 400 });
   }
 
-  // Все категории из справочника
   for (const c of categories) {
     if (!VEHICLE_CATEGORIES.includes(c)) {
       return NextResponse.json(
@@ -41,35 +40,57 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // ✅ Проверка: партнёр (scope) работает по этому городу?
-  // Находим партнёра, к которому привязан scope
-  const partnerId = scope.partnerId;
+  // === Определяем partnerId в зависимости от роли ===
+  let partnerId: string | null = null;
 
-  if (!partnerId) {
-    return NextResponse.json(
-      { error: 'Не удалось определить партнёра' },
-      { status: 400 },
-    );
-  }
+  if (scope.isSuperAdmin) {
+    // Супер админ: ищем партнёра по городу из тела запроса
+    const partnerByCity = await prisma.partner.findFirst({
+      where: {
+        isActive: true,
+        OR: [{ city }, { cities: { has: city } }],
+      },
+      select: { id: true, name: true, city: true },
+    });
 
-  const partner = await prisma.partner.findUnique({
-    where: { id: partnerId },
-    select: { city: true, cities: true },
-  });
+    if (!partnerByCity) {
+      return NextResponse.json(
+        { error: `Партнёр для города "${city}" не найден. Сначала создайте филиал.` },
+        { status: 404 },
+      );
+    }
 
-  if (!partner) {
-    return NextResponse.json({ error: 'Партнёр не найден' }, { status: 404 });
-  }
+    partnerId = partnerByCity.id;
+  } else {
+    // Партнёр: берём его partnerId и проверяем, что город входит в его список
+    partnerId = scope.partnerId;
 
-  const allowedCities = new Set<string>();
-  if (partner.city) allowedCities.add(partner.city);
-  for (const c of partner.cities ?? []) allowedCities.add(c);
+    if (!partnerId) {
+      return NextResponse.json(
+        { error: 'Не удалось определить партнёра' },
+        { status: 400 },
+      );
+    }
 
-  if (!allowedCities.has(city)) {
-    return NextResponse.json(
-      { error: 'Этот город недоступен для вашего партнёра' },
-      { status: 403 },
-    );
+    const partner = await prisma.partner.findUnique({
+      where: { id: partnerId },
+      select: { city: true, cities: true },
+    });
+
+    if (!partner) {
+      return NextResponse.json({ error: 'Партнёр не найден' }, { status: 404 });
+    }
+
+    const allowedCities = new Set<string>();
+    if (partner.city) allowedCities.add(partner.city);
+    for (const c of partner.cities ?? []) allowedCities.add(c);
+
+    if (!allowedCities.has(city)) {
+      return NextResponse.json(
+        { error: 'Этот город недоступен для вашего партнёра' },
+        { status: 403 },
+      );
+    }
   }
 
   // ✅ Проверка дубля телефона у этого партнёра
@@ -82,7 +103,7 @@ export async function POST(req: NextRequest) {
 
   if (existing) {
     return NextResponse.json(
-      { error: 'Владелец с таким телефоном уже есть у вас в базе' },
+      { error: 'Владелец с таким телефоном уже есть в базе этого филиала' },
       { status: 409 },
     );
   }
