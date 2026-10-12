@@ -54,10 +54,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Проверяем, что профиль владельца существует
+  // Главная карточка — регистрационная (для копирования данных и техники)
   const primaryOwner = await prisma.owner.findFirst({
     where: { userId: session.userId },
     orderBy: { createdAt: 'asc' },
+    include: { vehicles: true },
   });
 
   if (!primaryOwner) {
@@ -67,22 +68,38 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ✅ ОБНОВЛЯЕМ существующего владельца, а не создаём нового
-  // Новая БД имеет UNIQUE на userId — один пользователь = одна карточка владельца
-  await prisma.owner.updateMany({
-    where: { userId: session.userId },
-    data: {
-      city: normalizedCity,
-      partnerId: partner.id,
-      isRegistered: true,
-    },
+  const newOwner = await prisma.$transaction(async (tx) => {
+    const owner = await tx.owner.create({
+      data: {
+        name: primaryOwner.name,
+        phone: primaryOwner.phone,
+        email: primaryOwner.email,
+        company: primaryOwner.company,
+        city: normalizedCity,
+        partnerId: partner.id,
+        userId: session.userId,
+        isRegistered: true,
+        isOnShift: primaryOwner.isOnShift,
+        isActive: true,
+      },
+    });
+
+    // Копируем технику
+    if (primaryOwner.vehicles.length) {
+      await tx.vehicle.createMany({
+        data: primaryOwner.vehicles.map((v) => ({
+          ownerId: owner.id,
+          category: v.category,
+          brand: v.brand,
+          model: v.model,
+          year: v.year,
+          comment: v.comment,
+        })),
+      });
+    }
+
+    return owner;
   });
 
-  // Возвращаем обновлённую запись
-  const updatedOwner = await prisma.owner.findFirst({
-    where: { userId: session.userId },
-    include: { vehicles: true },
-  });
-
-  return NextResponse.json({ ok: true, owner: updatedOwner });
+  return NextResponse.json({ ok: true, owner: newOwner });
 }
