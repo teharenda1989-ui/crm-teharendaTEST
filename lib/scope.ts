@@ -16,8 +16,11 @@ export async function getScope(): Promise<Scope | null> {
 }
 
 // Возвращает объект where для Prisma-запроса.
-// Супер-админ видит только свои данные (partnerId = null),
-// партнёр — только свои (partnerId = его ID).
-export function scopeWhere(scope: Scope): { partnerId: string | null } {
+// Супер-админ видит ВСЕ данные (без фильтра).
+// Партнёр — только свои (partnerId = его ID).
+export function scopeWhere(scope: Scope): Record<string, unknown> {
+  if (scope.isSuperAdmin) {
+    return {}; // ← супер админ видит всех
+  }
   return { partnerId: scope.partnerId };
 }
