@@ -52,6 +52,8 @@ export async function POST(req: NextRequest) {
     publishedInApp,
     clientName,
     clientPhone,
+    assigneeName,   // ← новое
+    assigneePhone,  // ← новое
   } = body;
 
   if (!category)
@@ -93,6 +95,51 @@ export async function POST(req: NextRequest) {
     validGroupIds = allowed.map((g) => g.id);
   }
 
+  // === Автосоздание карточки исполнителя ===
+  // Если заявка привязана к городу и введены имя+телефон исполнителя —
+  // создаём карточку Owner у партнёра этого города (если её ещё нет).
+  let resolvedPartnerId: string | null = scope.partnerId ?? null;
+
+  if (city && assigneeName && assigneePhone) {
+    // Ищем партнёра по городу (учитываем и city, и массив cities)
+    const partnerByCity = await prisma.partner.findFirst({
+      where: {
+        isActive: true,
+        OR: [{ city }, { cities: { has: city } }],
+      },
+    });
+
+    if (partnerByCity) {
+      resolvedPartnerId = partnerByCity.id;
+
+      const normalizedPhone = String(assigneePhone).replace(/\D/g, '');
+
+      // Проверяем, есть ли уже такой исполнитель у этого партнёра
+      const existingOwner = await prisma.owner.findFirst({
+        where: {
+          partnerId: partnerByCity.id,
+          phone: normalizedPhone,
+        },
+      });
+
+      if (!existingOwner) {
+        await prisma.owner.create({
+          data: {
+            name: String(assigneeName).trim(),
+            phone: normalizedPhone,
+            city: partnerByCity.city || city,
+            partnerId: partnerByCity.id,
+            isActive: true,
+            isRegistered: false,
+          },
+        });
+      }
+    } else if (city) {
+      // Партнёра нет — но заявку сохраняем, ошибка не критична
+      console.warn(`Партнёр для города "${city}" не найден, Owner не создан`);
+    }
+  }
+
   const order = await prisma.order.create({
     data: {
       category,
@@ -104,11 +151,13 @@ export async function POST(req: NextRequest) {
       dispatcherPhone,
       orderAmount: Number(orderAmount),
       commissionAmount: Number(commissionAmount),
-      partnerId: scope.partnerId,
+      partnerId: resolvedPartnerId,
       publishedInApp: !!publishedInApp,
       closedInApp: false,
       clientName: clientName ? String(clientName).trim() : null,
       clientPhone: clientPhone ? String(clientPhone).trim() : null,
+      assigneeName: assigneeName ? String(assigneeName).trim() : null,
+      assigneePhone: assigneePhone ? String(assigneePhone).trim() : null,
       groups: validGroupIds.length
         ? { create: validGroupIds.map((groupId) => ({ groupId })) }
         : undefined,
