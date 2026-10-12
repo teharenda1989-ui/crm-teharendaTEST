@@ -34,11 +34,16 @@ export default function CompleteOrderButton({ orderId, result }: Props) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Ошибка');
-      router.refresh();
+      
+      // Даем пользователю 1 секунду увидеть, что все ок, и перекидываем на список заявок
+      setTimeout(() => {
+        router.push('/orders'); // Переход на страницу со списком
+        router.refresh();       // Принудительно сбрасываем кэш, чтобы заявка пропала из "Новых" и появилась в "Успешных"
+      }, 1000);
+      
     } catch (e: any) {
       alert(e.message);
-    } finally {
-      setLoading(false);
+      setLoading(false); // Снимаем лоадинг только в случае ошибки, при успехе компонент размонтируется
     }
   };
 
