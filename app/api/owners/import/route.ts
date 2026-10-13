@@ -3,8 +3,23 @@ import { prisma } from '@/lib/prisma';
 import { getScope, scopeWhere } from '@/lib/scope';
 import * as XLSX from 'xlsx';
 
-function normalizePhone(raw: string | number): string {
-  return String(raw).replace(/\D/g, '');
+/** Извлекает ВСЕ телефоны из ячейки (поддерживает переносы строк, запятые, точки с запятой) */
+function extractPhones(cell: any): string[] {
+  const text = String(cell || '');
+  const parts = text.split(/[\n\r,;|]+/);
+  const phones: string[] = [];
+  for (const p of parts) {
+    const digits = p.replace(/\D/g, '');
+    if (digits.length >= 10 && digits.length <= 12) phones.push(digits);
+  }
+  return Array.from(new Set(phones));
+}
+
+function extractNumber(cell: any): number | null {
+  const text = String(cell || '').trim();
+  if (!text) return null;
+  const match = text.match(/\d+/);
+  return match ? parseInt(match[0], 10) : null;
 }
 
 function findCol(headers: string[], names: string[]): number {
@@ -18,7 +33,7 @@ function findCol(headers: string[], names: string[]): number {
   return -1;
 }
 
-const CHUNK_SIZE = 500;
+const OWNER_ONLY_HEADERS = ['водител', 'хозяин', 'имя', 'название', 'фио', 'телефон', 'номер', 'цена', 'минимал'];
 
 export async function POST(req: NextRequest) {
   const scope = await getScope();
@@ -38,20 +53,15 @@ export async function POST(req: NextRequest) {
   const buffer = Buffer.from(await file.arrayBuffer());
   const workbook = XLSX.read(buffer, { type: 'buffer' });
 
-  // === РЕЖИМ ПРЕДПРОСМОТРА ===
+  // ПРЕДПРОСМОТР
   if (preview) {
     const results: any[] = [];
     for (const sheetName of workbook.SheetNames) {
       if (sheetName === 'Лист1') continue;
       const sheet = workbook.Sheets[sheetName];
-      const rows: any[] = XLSX.utils.sheet_to_json(sheet, {
-        header: 1,
-        defval: '',
-      });
+      const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
       if (rows.length < 2) continue;
-      const validRows = rows
-        .slice(1)
-        .filter((r) => normalizePhone(r[0] || '').length >= 10);
+      const validRows = rows.slice(1).filter((r) => extractPhones(r[0]).length > 0);
       results.push({
         sheet: sheetName,
         category: sheetName,
@@ -66,7 +76,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ preview: true, results, cleared: 0 });
   }
 
-  // === ОЧИСТКА ===
+  // ОЧИСТКА
   let cleared = 0;
   if (clearAll) {
     const where = scopeWhere(scope);
@@ -77,91 +87,64 @@ export async function POST(req: NextRequest) {
   const partnerId = scope.isSuperAdmin ? null : scope.partnerId;
   const results: any[] = [];
 
-  // === ИМПОРТ ===
   for (const sheetName of workbook.SheetNames) {
     if (sheetName === 'Лист1') continue;
 
     const sheet = workbook.Sheets[sheetName];
-    const rows: any[][] = XLSX.utils.sheet_to_json(sheet, {
-      header: 1,
-      defval: '',
-    });
+    const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
     if (rows.length < 2) continue;
 
     const headers = rows[0].map((h) => String(h));
-
-    // ФИКС: если колонка "номер/телефон" не найдена по имени — берем первую
-    let phoneCol = findCol(headers, ['номер', 'телефон']);
-    if (phoneCol < 0) phoneCol = 0;
-
-    const nameCol = findCol(headers, ['имя', 'название']);
+    const nameCol = findCol(headers, ['хозяин', 'имя', 'название', 'фио']);
     const priceCol = findCol(headers, ['цена']);
-    const commentCol = findCol(headers, ['коммент', 'статус']);
-    const cityCol = findCol(headers, ['город']);
-    const addressCol = findCol(headers, ['адрес']);
+    const minCol = findCol(headers, ['минимал']);
 
-    const charCols = headers
-      .map((_, i) => i)
-      .filter(
-        (i) =>
-          i !== phoneCol &&
-          i !== nameCol &&
-          i !== priceCol &&
-          i !== commentCol &&
-          i !== cityCol &&
-          i !== addressCol,
-      );
-
-    // 1. Парсим все строки в память
-    type ParsedRow = {
-      phone: string;
+    // === 1. Группируем строки по владельцу (по имени с наследованием) ===
+    type Group = {
       name: string;
-      city: string | null;
-      address: string | null;
-      vehicleComment: string;
+      phones: string[];
+      rows: Record<string, string>[];
     };
-    const parsed: ParsedRow[] = [];
+    const groups: Group[] = [];
+    let current: Group | null = null;
 
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
-      const phone = normalizePhone(row[phoneCol]);
-      if (phone.length < 10) continue;
+      const cellPhones = extractPhones(row[0]);
+      const cellName = nameCol >= 0 ? String(row[nameCol] || '').trim() : '';
 
-      const name = String(row[nameCol] || '').trim() || 'Без имени';
-      const price = priceCol >= 0 ? String(row[priceCol] || '').trim() : '';
-      const comment =
-        commentCol >= 0 ? String(row[commentCol] || '').trim() : '';
-      const city = cityCol >= 0 ? String(row[cityCol] || '').trim() : '';
-      const address =
-        addressCol >= 0 ? String(row[addressCol] || '').trim() : '';
-
-      const chars: string[] = [];
-      for (const ci of charCols) {
-        const val = String(row[ci] || '').trim();
-        if (val && headers[ci]) chars.push(`${headers[ci]}: ${val}`);
+      // Непустое имя → новая группа
+      if (cellName) {
+        current = { name: cellName, phones: [], rows: [] };
+        groups.push(current);
       }
-      if (price) chars.push(`Цена: ${price}`);
-      if (comment) chars.push(`Статус: ${comment}`);
+      if (!current) {
+        current = { name: 'Без имени', phones: [], rows: [] };
+        groups.push(current);
+      }
 
-      parsed.push({
-        phone,
-        name,
-        city: city || null,
-        address: address || null,
-        vehicleComment: chars.join(' · '),
-      });
+      current.phones.push(...cellPhones);
+
+      // Собираем значения строки (заголовок → значение)
+      const raw: Record<string, string> = {};
+      for (let j = 0; j < headers.length; j++) {
+        const v = String(row[j] || '').trim();
+        if (v && headers[j]) raw[headers[j]] = v;
+      }
+      current.rows.push(raw);
     }
 
-    if (!parsed.length) {
+    // Дедуп телефонов внутри группы
+    for (const g of groups) g.phones = Array.from(new Set(g.phones));
+    // Убираем группы без единого телефона
+    const validGroups = groups.filter((g) => g.phones.length > 0);
+
+    if (!validGroups.length) {
       results.push({
-        sheet: sheetName,
-        category: sheetName,
-        rows: 0,
-        ownersCreated: 0,
-        ownersUpdated: 0,
-        vehiclesCreated: 0,
-        vehiclesSkipped: 0,
-        errors: ['Не найдено ни одной строки с валидным телефоном'],
+        sheet: sheetName, category: sheetName, rows: 0,
+        ownersCreated: 0, ownersUpdated: 0,
+        vehiclesCreated: 0, vehiclesSkipped: 0,
+        errors: ['Не найдено ни одного телефона'],
       });
       continue;
     }
@@ -169,130 +152,126 @@ export async function POST(req: NextRequest) {
     const errors: string[] = [];
 
     try {
-      // 2. Уникальные телефоны
-      const uniquePhones = Array.from(new Set(parsed.map((r) => r.phone)));
+      // === 2. Формируем данные Owner для каждой группы ===
+      const allPhones: string[] = [];
+      const ownerPayloads = validGroups.map((g) => {
+        const phone = g.phones[0];
+        const extraPhones = g.phones.slice(1).join(', ') || null;
+        allPhones.push(phone);
 
-      // 3. Один запрос — найти существующих владельцев
-      const existingOwners = await prisma.owner.findMany({
+        let pricePerHour: number | null = null;
+        let minHours: number | null = null;
+        const infoParts: string[] = [];
+
+        for (const raw of g.rows) {
+          if (pricePerHour == null && priceCol >= 0) {
+            pricePerHour = extractNumber(raw[headers[priceCol]]);
+          }
+          if (minHours == null && minCol >= 0) {
+            minHours = extractNumber(raw[headers[minCol]]);
+          }
+          // Собираем доп.инфо (исключая служебные столбцы)
+          const parts: string[] = [];
+          for (const [k, v] of Object.entries(raw)) {
+            const kl = k.toLowerCase();
+            if (OWNER_ONLY_HEADERS.some((h) => kl.includes(h))) continue;
+            if (headers[priceCol] === k || headers[minCol] === k) continue;
+            parts.push(`${k}: ${v}`);
+          }
+          if (parts.length) infoParts.push(parts.join(' · '));
+        }
+
+        const additionalInfo = infoParts.join('\n') || null;
+
+        return {
+          name: g.name,
+          phone,
+          extraPhones,
+          pricePerHour,
+          minHours,
+          additionalInfo,
+          partnerId,
+        };
+      });
+
+      // === 3. Находим существующих владельцев ===
+      const existing = await prisma.owner.findMany({
         where: {
-          phone: { in: uniquePhones },
+          phone: { in: allPhones },
           ...(partnerId ? { partnerId } : {}),
         },
         select: { id: true, phone: true },
       });
-      const existingByPhone = new Map(existingOwners.map((o) => [o.phone, o.id]));
+      const existingPhones = new Set(existing.map((o) => o.phone));
 
-      // 4. Пакетно создать недостающих владельцев
-      const firstByPhone = new Map<string, ParsedRow>();
-      for (const r of parsed) {
-        if (!firstByPhone.has(r.phone)) firstByPhone.set(r.phone, r);
-      }
-
-      const ownersToCreate = uniquePhones
-        .filter((p) => !existingByPhone.has(p))
-        .map((p) => {
-          const r = firstByPhone.get(p)!;
-          return {
-            phone: r.phone,
-            name: r.name,
-            city: r.city,
-            address: r.address,
-            partnerId,
-          };
-        });
-
+      // === 4. Пакетно создаём новых владельцев ===
+      const toCreate = ownerPayloads.filter((o) => !existingPhones.has(o.phone));
       let ownersCreated = 0;
-      if (ownersToCreate.length) {
-        const res = await prisma.owner.createMany({
-          data: ownersToCreate,
-          skipDuplicates: true,
-        });
+      if (toCreate.length) {
+        const res = await prisma.owner.createMany({ data: toCreate, skipDuplicates: true });
         ownersCreated = res.count;
       }
-      const ownersUpdated = uniquePhones.length - ownersCreated;
+      const ownersUpdated = ownerPayloads.length - ownersCreated;
 
-      // 5. Один запрос — перечитать всех (включая созданных), получить id
+      // === 5. Обновляем существующих (заливаем новые поля) ===
+      for (const o of ownerPayloads) {
+        if (!existingPhones.has(o.phone)) continue;
+        const found = existing.find((e) => e.phone === o.phone);
+        if (!found) continue;
+        await prisma.owner.update({
+          where: { id: found.id },
+          data: {
+            extraPhones: o.extraPhones,
+            pricePerHour: o.pricePerHour,
+            minHours: o.minHours,
+            additionalInfo: o.additionalInfo,
+          },
+        });
+      }
+
+      // === 6. Создаём Vehicle для каждого владельца (одна на группу) ===
       const allOwners = await prisma.owner.findMany({
         where: {
-          phone: { in: uniquePhones },
+          phone: { in: allPhones },
           ...(partnerId ? { partnerId } : {}),
         },
         select: { id: true, phone: true },
       });
-      const ownerIdByPhone = new Map(allOwners.map((o) => [o.phone, o.id]));
-      const ownerIds = Array.from(ownerIdByPhone.values());
+      const idByPhone = new Map(allOwners.map((o) => [o.phone, o.id]));
 
-      // 6. Собрать все техники к вставке
-      const vehiclesToCreate: {
-        ownerId: string;
-        category: string;
-        comment: string | null;
-      }[] = [];
-      for (const r of parsed) {
-        const ownerId = ownerIdByPhone.get(r.phone);
-        if (!ownerId) continue;
-        vehiclesToCreate.push({
-          ownerId,
-          category: sheetName,
-          comment: r.vehicleComment || null,
-        });
-      }
-
-      // 7. Один запрос — существующие техники
-      const existingVehicles = ownerIds.length
-        ? await prisma.vehicle.findMany({
-            where: {
-              ownerId: { in: ownerIds },
-              category: sheetName,
-            },
-            select: { ownerId: true, comment: true },
-          })
-        : [];
-      const existingKeys = new Set(
-        existingVehicles.map((v) => `${v.ownerId}::${v.comment || ''}`),
-      );
-
-      // 8. Отфильтровать дубли и пакетно вставить
-      const newVehicles: typeof vehiclesToCreate = [];
+      let vehiclesCreated = 0;
       let vehiclesSkipped = 0;
-      for (const v of vehiclesToCreate) {
-        const key = `${v.ownerId}::${v.comment || ''}`;
-        if (existingKeys.has(key)) {
+      const vehiclesToCreate: { ownerId: string; category: string }[] = [];
+
+      for (const g of validGroups) {
+        const ownerId = idByPhone.get(g.phones[0]);
+        if (!ownerId) continue;
+
+        // Проверяем, есть ли уже Vehicle с такой категорией
+        const exists = await prisma.vehicle.findFirst({
+          where: { ownerId, category: sheetName },
+        });
+        if (exists) {
           vehiclesSkipped++;
           continue;
         }
-        existingKeys.add(key);
-        newVehicles.push(v);
+        vehiclesToCreate.push({ ownerId, category: sheetName });
       }
 
-      let vehiclesCreated = 0;
-      for (let i = 0; i < newVehicles.length; i += CHUNK_SIZE) {
-        const chunk = newVehicles.slice(i, i + CHUNK_SIZE);
-        const res = await prisma.vehicle.createMany({ data: chunk });
-        vehiclesCreated += res.count;
+      if (vehiclesToCreate.length) {
+        const res = await prisma.vehicle.createMany({ data: vehiclesToCreate });
+        vehiclesCreated = res.count;
       }
 
       results.push({
-        sheet: sheetName,
-        category: sheetName,
-        rows: parsed.length,
-        ownersCreated,
-        ownersUpdated,
-        vehiclesCreated,
-        vehiclesSkipped,
-        errors,
+        sheet: sheetName, category: sheetName, rows: validGroups.length,
+        ownersCreated, ownersUpdated, vehiclesCreated, vehiclesSkipped, errors,
       });
     } catch (e: any) {
-      errors.push(`Ошибка пакетной обработки: ${e.message}`);
       results.push({
-        sheet: sheetName,
-        category: sheetName,
-        rows: parsed.length,
-        ownersCreated: 0,
-        ownersUpdated: 0,
-        vehiclesCreated: 0,
-        vehiclesSkipped: 0,
-        errors,
+        sheet: sheetName, category: sheetName, rows: validGroups.length,
+        ownersCreated: 0, ownersUpdated: 0, vehiclesCreated: 0, vehiclesSkipped: 0,
+        errors: [`Ошибка: ${e.message}`],
       });
     }
   }
