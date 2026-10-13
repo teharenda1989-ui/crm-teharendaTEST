@@ -232,6 +232,7 @@ export default async function OwnerPage({ params }: Props) {
             id: owner.id,
             name: owner.name,
             phone: owner.phone,
+            extraPhones: o.extraPhones ?? null,
             company: owner.company,
             city: owner.city,
             address: owner.address,
@@ -239,6 +240,9 @@ export default async function OwnerPage({ params }: Props) {
             lng: owner.lng,
             comment: owner.comment,
             notes: owner.notes,
+            pricePerHour: o.pricePerHour ?? null,
+            minHours: o.minHours ?? null,
+            additionalInfo: o.additionalInfo ?? null,
             isActive: owner.isActive,
           }}
         />
