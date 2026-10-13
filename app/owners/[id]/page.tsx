@@ -28,9 +28,7 @@ export default async function OwnerPage({ params }: Props) {
     where: { id: params.id },
     include: {
       vehicles: { orderBy: { createdAt: 'asc' } },
-      takes: {
-        select: { status: true },
-      },
+      takes: { select: { status: true } },
     },
   });
 
@@ -40,6 +38,11 @@ export default async function OwnerPage({ params }: Props) {
   const canceledCount = owner.takes.filter(
     (t) => t.status === 'CANCELED',
   ).length;
+
+  // Доп.телефоны — разбиваем по запятой для удобного отображения
+  const extraPhonesList = owner.extraPhones
+    ? owner.extraPhones.split(',').map((p) => p.trim()).filter(Boolean)
+    : [];
 
   return (
     <div>
@@ -51,7 +54,7 @@ export default async function OwnerPage({ params }: Props) {
 
       <div className="bg-white rounded-lg shadow p-6 mb-6">
         <div className="flex flex-wrap justify-between items-start gap-4">
-          <div>
+          <div className="flex-1 min-w-[320px]">
             <h1 className="text-3xl font-bold mb-1">{owner.name}</h1>
             {owner.company && (
               <p className="text-slate-500 mb-3">{owner.company}</p>
@@ -80,6 +83,24 @@ export default async function OwnerPage({ params }: Props) {
                 ✈️ Telegram
               </a>
             </div>
+
+            {/* 🆕 Дополнительные телефоны */}
+            {extraPhonesList.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                <span className="text-sm text-slate-500 py-1">
+                  Доп.телефоны:
+                </span>
+                {extraPhonesList.map((p, i) => (
+                  <a
+                    key={i}
+                    href={`tel:${p}`}
+                    className="bg-slate-100 hover:bg-slate-200 text-slate-800 px-3 py-1 rounded text-sm inline-flex items-center gap-1"
+                  >
+                    📞 {p}
+                  </a>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="text-right text-sm text-slate-500">
@@ -112,6 +133,35 @@ export default async function OwnerPage({ params }: Props) {
           </div>
         </div>
 
+        {/* 🆕 Условия работы: Цена часа + Минималка */}
+        {(owner.pricePerHour != null || owner.minHours != null) && (
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+            {owner.pricePerHour != null && (
+              <div>
+                <div className="text-sm text-amber-800 mb-1">💰 Цена часа</div>
+                <div className="text-2xl font-bold text-amber-900">
+                  {owner.pricePerHour.toLocaleString('ru-RU')} ₽
+                </div>
+              </div>
+            )}
+            {owner.minHours != null && (
+              <div>
+                <div className="text-sm text-amber-800 mb-1">
+                  ⏱ Минималка
+                </div>
+                <div className="text-2xl font-bold text-amber-900">
+                  {owner.minHours}{' '}
+                  {owner.minHours === 1
+                    ? 'час'
+                    : owner.minHours < 5
+                    ? 'часа'
+                    : 'часов'}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {owner.isRegistered && (
           <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-slate-50 rounded-lg">
             <div>
@@ -143,6 +193,18 @@ export default async function OwnerPage({ params }: Props) {
             💬 {owner.comment}
           </div>
         )}
+
+        {/* 🆕 Дополнительная информация из импорта */}
+        {owner.additionalInfo && (
+          <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="text-sm font-semibold text-blue-800 mb-2">
+              📋 Дополнительная информация
+            </div>
+            <div className="text-sm text-blue-900 whitespace-pre-wrap leading-relaxed">
+              {owner.additionalInfo}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="bg-white rounded-lg shadow p-6 mb-6">
@@ -167,6 +229,7 @@ export default async function OwnerPage({ params }: Props) {
             id: owner.id,
             name: owner.name,
             phone: owner.phone,
+            extraPhones: owner.extraPhones,
             company: owner.company,
             city: owner.city,
             address: owner.address,
@@ -174,6 +237,9 @@ export default async function OwnerPage({ params }: Props) {
             lng: owner.lng,
             comment: owner.comment,
             notes: owner.notes,
+            pricePerHour: owner.pricePerHour,
+            minHours: owner.minHours,
+            additionalInfo: owner.additionalInfo,
             isActive: owner.isActive,
           }}
         />
