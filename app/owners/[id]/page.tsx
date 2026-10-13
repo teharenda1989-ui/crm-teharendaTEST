@@ -34,14 +34,19 @@ export default async function OwnerPage({ params }: Props) {
 
   if (!owner) notFound();
 
+  // Временный обход типов — Prisma Client на сервере ещё не знает про новые поля
+  const o = owner as any;
+
   const doneCount = owner.takes.filter((t) => t.status === 'DONE').length;
   const canceledCount = owner.takes.filter(
     (t) => t.status === 'CANCELED',
   ).length;
 
-  // Доп.телефоны — разбиваем по запятой для удобного отображения
-  const extraPhonesList = owner.extraPhones
-    ? owner.extraPhones.split(',').map((p) => p.trim()).filter(Boolean)
+  const extraPhonesList: string[] = o.extraPhones
+    ? String(o.extraPhones)
+        .split(',')
+        .map((p) => p.trim())
+        .filter(Boolean)
     : [];
 
   return (
@@ -84,12 +89,10 @@ export default async function OwnerPage({ params }: Props) {
               </a>
             </div>
 
-            {/* 🆕 Дополнительные телефоны */}
+            {/* Дополнительные телефоны */}
             {extraPhonesList.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                <span className="text-sm text-slate-500 py-1">
-                  Доп.телефоны:
-                </span>
+              <div className="mt-3 flex flex-wrap gap-2 items-center">
+                <span className="text-sm text-slate-500">Доп.телефоны:</span>
                 {extraPhonesList.map((p, i) => (
                   <a
                     key={i}
@@ -133,27 +136,27 @@ export default async function OwnerPage({ params }: Props) {
           </div>
         </div>
 
-        {/* 🆕 Условия работы: Цена часа + Минималка */}
-        {(owner.pricePerHour != null || owner.minHours != null) && (
+        {/* Условия работы: Цена часа + Минималка */}
+        {(o.pricePerHour != null || o.minHours != null) && (
           <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
-            {owner.pricePerHour != null && (
+            {o.pricePerHour != null && (
               <div>
                 <div className="text-sm text-amber-800 mb-1">💰 Цена часа</div>
                 <div className="text-2xl font-bold text-amber-900">
-                  {owner.pricePerHour.toLocaleString('ru-RU')} ₽
+                  {Number(o.pricePerHour).toLocaleString('ru-RU')} ₽
                 </div>
               </div>
             )}
-            {owner.minHours != null && (
+            {o.minHours != null && (
               <div>
                 <div className="text-sm text-amber-800 mb-1">
                   ⏱ Минималка
                 </div>
                 <div className="text-2xl font-bold text-amber-900">
-                  {owner.minHours}{' '}
-                  {owner.minHours === 1
+                  {Number(o.minHours)}{' '}
+                  {Number(o.minHours) === 1
                     ? 'час'
-                    : owner.minHours < 5
+                    : Number(o.minHours) < 5
                     ? 'часа'
                     : 'часов'}
                 </div>
@@ -194,14 +197,14 @@ export default async function OwnerPage({ params }: Props) {
           </div>
         )}
 
-        {/* 🆕 Дополнительная информация из импорта */}
-        {owner.additionalInfo && (
+        {/* Дополнительная информация из импорта */}
+        {o.additionalInfo && (
           <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
             <div className="text-sm font-semibold text-blue-800 mb-2">
               📋 Дополнительная информация
             </div>
             <div className="text-sm text-blue-900 whitespace-pre-wrap leading-relaxed">
-              {owner.additionalInfo}
+              {String(o.additionalInfo)}
             </div>
           </div>
         )}
@@ -229,7 +232,6 @@ export default async function OwnerPage({ params }: Props) {
             id: owner.id,
             name: owner.name,
             phone: owner.phone,
-            extraPhones: owner.extraPhones,
             company: owner.company,
             city: owner.city,
             address: owner.address,
@@ -237,9 +239,6 @@ export default async function OwnerPage({ params }: Props) {
             lng: owner.lng,
             comment: owner.comment,
             notes: owner.notes,
-            pricePerHour: owner.pricePerHour,
-            minHours: owner.minHours,
-            additionalInfo: owner.additionalInfo,
             isActive: owner.isActive,
           }}
         />
