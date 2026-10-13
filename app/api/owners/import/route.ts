@@ -4,7 +4,7 @@ import { getScope, scopeWhere } from '@/lib/scope';
 import { normalizeCategory, VEHICLE_CATEGORIES } from '@/lib/vehicle-categories';
 import * as XLSX from 'xlsx';
 
-/** Извлекает ВСЕ телефоны из ячейки (поддерживает переносы строк, запятые, точки с запятой) */
+/** Извлекает ВСЕ телефоны из ячейки (переносы строк, запятые, |, ;) */
 function extractPhones(cell: any): string[] {
   const text = String(cell || '');
   const parts = text.split(/[\n\r,;|]+/);
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
   const buffer = Buffer.from(await file.arrayBuffer());
   const workbook = XLSX.read(buffer, { type: 'buffer' });
 
-  // === ПРЕДПРОСМОТР (с нормализацией рубрик) ===
+  // === ПРЕДПРОСМОТР ===
   if (preview) {
     const results: any[] = [];
     for (const sheetName of workbook.SheetNames) {
@@ -64,8 +64,8 @@ export async function POST(req: NextRequest) {
       const normalized = normalizeCategory(sheetName);
       results.push({
         sheet: sheetName,
-        category: normalized,          // куда нормализовалась рубрика
-        originalSheet: sheetName,      // как в файле
+        category: normalized,
+        originalSheet: sheetName,
         rows: validRows.length,
         ownersCreated: 0,
         ownersUpdated: 0,
@@ -98,7 +98,6 @@ export async function POST(req: NextRequest) {
     const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
     if (rows.length < 2) continue;
 
-    // 🔑 Нормализация рубрики из имени листа в каноническую
     const category = normalizeCategory(sheetName);
 
     const headers = rows[0].map((h) => String(h));
@@ -106,39 +105,54 @@ export async function POST(req: NextRequest) {
     const priceCol = findCol(headers, ['цена']);
     const minCol = findCol(headers, ['минимал']);
 
-    // Группируем строки по владельцу (наследуем имя, если в строке пусто)
-    type Group = { name: string; phones: string[]; rows: Record<string, string>[] };
-    const groups: Group[] = [];
-    let current: Group | null = null;
+    // 🆕 КАЖДАЯ строка с телефоном = отдельная карточка. Имя НЕ наследуется.
+    type ParsedRow = {
+      name: string;
+      phone: string;
+      extraPhones: string | null;
+      pricePerHour: number | null;
+      minHours: number | null;
+      additionalInfo: string | null;
+    };
+    const parsed: ParsedRow[] = [];
 
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
       const cellPhones = extractPhones(row[0]);
-      const cellName = nameCol >= 0 ? String(row[nameCol] || '').trim() : '';
+      if (!cellPhones.length) continue;
 
-      if (cellName) {
-        current = { name: cellName, phones: [], rows: [] };
-        groups.push(current);
-      }
-      if (!current) {
-        current = { name: 'Без имени', phones: [], rows: [] };
-        groups.push(current);
-      }
+      const phone = cellPhones[0];
+      const extraPhones = cellPhones.slice(1).join(', ') || null;
 
-      current.phones.push(...cellPhones);
+      const rawName = nameCol >= 0 ? String(row[nameCol] || '').trim() : '';
+      const name = rawName || 'Без имени';
 
-      const raw: Record<string, string> = {};
+      const pricePerHour = priceCol >= 0 ? extractNumber(row[priceCol]) : null;
+      const minHours = minCol >= 0 ? extractNumber(row[minCol]) : null;
+
+      // Доп.информация — все неслужебные столбцы
+      const infoParts: string[] = [];
       for (let j = 0; j < headers.length; j++) {
+        const h = headers[j];
         const v = String(row[j] || '').trim();
-        if (v && headers[j]) raw[headers[j]] = v;
+        if (!v || !h) continue;
+        const hl = h.toLowerCase();
+        if (OWNER_ONLY_HEADERS.some((x) => hl.includes(x))) continue;
+        if (j === priceCol || j === minCol) continue;
+        infoParts.push(`${h}: ${v}`);
       }
-      current.rows.push(raw);
+
+      parsed.push({
+        name,
+        phone,
+        extraPhones,
+        pricePerHour,
+        minHours,
+        additionalInfo: infoParts.join(' · ') || null,
+      });
     }
 
-    for (const g of groups) g.phones = Array.from(new Set(g.phones));
-    const validGroups = groups.filter((g) => g.phones.length > 0);
-
-    if (!validGroups.length) {
+    if (!parsed.length) {
       results.push({
         sheet: sheetName, category, originalSheet: sheetName, rows: 0,
         ownersCreated: 0, ownersUpdated: 0, vehiclesCreated: 0, vehiclesSkipped: 0,
@@ -150,43 +164,7 @@ export async function POST(req: NextRequest) {
     const errors: string[] = [];
 
     try {
-      const allPhones: string[] = [];
-      const ownerPayloads = validGroups.map((g) => {
-        const phone = g.phones[0];
-        const extraPhones = g.phones.slice(1).join(', ') || null;
-        allPhones.push(phone);
-
-        let pricePerHour: number | null = null;
-        let minHours: number | null = null;
-        const infoParts: string[] = [];
-
-        for (const raw of g.rows) {
-          if (pricePerHour == null && priceCol >= 0) {
-            pricePerHour = extractNumber(raw[headers[priceCol]]);
-          }
-          if (minHours == null && minCol >= 0) {
-            minHours = extractNumber(raw[headers[minCol]]);
-          }
-          const parts: string[] = [];
-          for (const [k, v] of Object.entries(raw)) {
-            const kl = k.toLowerCase();
-            if (OWNER_ONLY_HEADERS.some((h) => kl.includes(h))) continue;
-            if (headers[priceCol] === k || headers[minCol] === k) continue;
-            parts.push(`${k}: ${v}`);
-          }
-          if (parts.length) infoParts.push(parts.join(' · '));
-        }
-
-        return {
-          name: g.name,
-          phone,
-          extraPhones,
-          pricePerHour,
-          minHours,
-          additionalInfo: infoParts.join('\n') || null,
-          partnerId,
-        };
-      });
+      const allPhones = parsed.map((r) => r.phone);
 
       // Существующие владельцы
       const existing = await prisma.owner.findMany({
@@ -196,16 +174,18 @@ export async function POST(req: NextRequest) {
       const existingPhones = new Set(existing.map((o) => o.phone));
 
       // Создаём новых
-      const toCreate = ownerPayloads.filter((o) => !existingPhones.has(o.phone));
+      const toCreate = parsed
+        .filter((o) => !existingPhones.has(o.phone))
+        .map((o) => ({ ...o, partnerId }));
       let ownersCreated = 0;
       if (toCreate.length) {
         const res = await prisma.owner.createMany({ data: toCreate, skipDuplicates: true });
         ownersCreated = res.count;
       }
-      const ownersUpdated = ownerPayloads.length - ownersCreated;
+      const ownersUpdated = parsed.length - ownersCreated;
 
-      // Обновляем существующих
-      for (const o of ownerPayloads) {
+      // Обновляем существующих (заливаем новые поля)
+      for (const o of parsed) {
         if (!existingPhones.has(o.phone)) continue;
         const found = existing.find((e) => e.phone === o.phone);
         if (!found) continue;
@@ -220,23 +200,22 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      // Vehicle создаём уже с НОРМАЛИЗОВАННОЙ категорией
+      // Перечитываем всех, чтобы получить id
       const allOwners = await prisma.owner.findMany({
         where: { phone: { in: allPhones }, ...(partnerId ? { partnerId } : {}) },
         select: { id: true, phone: true },
       });
       const idByPhone = new Map(allOwners.map((o) => [o.phone, o.id]));
 
+      // Vehicle — по одной на каждый уникальный телефон
       let vehiclesCreated = 0;
       let vehiclesSkipped = 0;
       const vehiclesToCreate: { ownerId: string; category: string }[] = [];
 
-      for (const g of validGroups) {
-        const ownerId = idByPhone.get(g.phones[0]);
+      for (const r of parsed) {
+        const ownerId = idByPhone.get(r.phone);
         if (!ownerId) continue;
-        const exists = await prisma.vehicle.findFirst({
-          where: { ownerId, category },
-        });
+        const exists = await prisma.vehicle.findFirst({ where: { ownerId, category } });
         if (exists) {
           vehiclesSkipped++;
           continue;
@@ -251,13 +230,13 @@ export async function POST(req: NextRequest) {
 
       results.push({
         sheet: sheetName, category, originalSheet: sheetName,
-        rows: validGroups.length,
+        rows: parsed.length,
         ownersCreated, ownersUpdated, vehiclesCreated, vehiclesSkipped, errors,
       });
     } catch (e: any) {
       results.push({
         sheet: sheetName, category, originalSheet: sheetName,
-        rows: validGroups.length,
+        rows: parsed.length,
         ownersCreated: 0, ownersUpdated: 0, vehiclesCreated: 0, vehiclesSkipped: 0,
         errors: [`Ошибка: ${e.message}`],
       });
