@@ -53,6 +53,7 @@ model Owner {
   id              String   @id @default(cuid())
   name            String
   phone           String
+  extraPhones     String?
   email           String?
   company         String?
   city            String?
@@ -61,6 +62,9 @@ model Owner {
   lng             Float?
   comment         String?
   notes           String?
+  pricePerHour    Int?
+  minHours        Int?
+  additionalInfo  String?
   isActive        Boolean  @default(true)
   isRegistered    Boolean  @default(false)
   isOnShift       Boolean  @default(true)
