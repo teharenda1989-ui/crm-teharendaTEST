@@ -7,6 +7,7 @@ interface Owner {
   id: string;
   name: string;
   phone: string;
+  extraPhones?: string | null;
   company: string | null;
   city: string | null;
   address: string | null;
@@ -14,6 +15,9 @@ interface Owner {
   lng: number | null;
   comment: string | null;
   notes: string | null;
+  pricePerHour?: number | null;
+  minHours?: number | null;
+  additionalInfo?: string | null;
   isActive: boolean;
 }
 
@@ -22,11 +26,15 @@ export default function OwnerEditForm({ owner }: { owner: Owner }) {
 
   const [form, setForm] = useState({
     name: owner.name,
+    extraPhones: owner.extraPhones || '',
     company: owner.company || '',
     city: owner.city || '',
     address: owner.address || '',
     comment: owner.comment || '',
     notes: owner.notes || '',
+    pricePerHour: owner.pricePerHour ?? null,
+    minHours: owner.minHours ?? null,
+    additionalInfo: owner.additionalInfo || '',
     isActive: owner.isActive,
   });
 
@@ -124,7 +132,7 @@ export default function OwnerEditForm({ owner }: { owner: Owner }) {
 
           <div>
             <label className="block text-sm text-slate-600 mb-1">
-              Телефон
+              Телефон (основной)
             </label>
             <input
               type="text"
@@ -135,6 +143,21 @@ export default function OwnerEditForm({ owner }: { owner: Owner }) {
             <p className="text-xs text-slate-400 mt-1">
               Телефон изменить нельзя
             </p>
+          </div>
+
+          <div className="md:col-span-2">
+            <label className="block text-sm text-slate-600 mb-1">
+              Дополнительные телефоны
+            </label>
+            <input
+              type="text"
+              value={form.extraPhones}
+              onChange={(e) =>
+                setForm({ ...form, extraPhones: e.target.value })
+              }
+              placeholder="Через запятую: 89121234567, 89221234567"
+              className="w-full border border-slate-300 rounded px-3 py-2"
+            />
           </div>
 
           <div>
@@ -194,6 +217,51 @@ export default function OwnerEditForm({ owner }: { owner: Owner }) {
         </div>
       </div>
 
+      {/* 🆕 Блок условий работы */}
+      <div className="bg-white rounded-lg shadow p-6">
+        <h2 className="text-lg font-semibold mb-4">💰 Условия работы</h2>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm text-slate-600 mb-1">
+              Цена часа (₽)
+            </label>
+            <input
+              type="number"
+              value={form.pricePerHour ?? ''}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  pricePerHour:
+                    e.target.value === '' ? null : Number(e.target.value),
+                })
+              }
+              placeholder="Например, 1300"
+              className="w-full border border-slate-300 rounded px-3 py-2"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm text-slate-600 mb-1">
+              Минималка (часов)
+            </label>
+            <input
+              type="number"
+              value={form.minHours ?? ''}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  minHours:
+                    e.target.value === '' ? null : Number(e.target.value),
+                })
+              }
+              placeholder="Например, 2"
+              className="w-full border border-slate-300 rounded px-3 py-2"
+            />
+          </div>
+        </div>
+      </div>
+
       <div className="bg-white rounded-lg shadow p-6">
         <h2 className="text-lg font-semibold mb-4">Дополнительно</h2>
 
@@ -212,13 +280,28 @@ export default function OwnerEditForm({ owner }: { owner: Owner }) {
 
           <div>
             <label className="block text-sm text-slate-600 mb-1">
-              Дополнительная информация
+              Дополнительная информация (из файла прозвона)
+            </label>
+            <textarea
+              value={form.additionalInfo}
+              onChange={(e) =>
+                setForm({ ...form, additionalInfo: e.target.value })
+              }
+              rows={4}
+              placeholder="Ковш.куб: 2,8 · Цена: 1300 · Прочая инфа из Excel"
+              className="w-full border border-slate-300 rounded px-3 py-2"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm text-slate-600 mb-1">
+              Заметки (внутренние)
             </label>
             <textarea
               value={form.notes}
               onChange={(e) => setForm({ ...form, notes: e.target.value })}
-              rows={4}
-              placeholder="Доп. оборудование, особенности, что сказали при звонке..."
+              rows={2}
+              placeholder="Свободные заметки диспетчера..."
               className="w-full border border-slate-300 rounded px-3 py-2"
             />
           </div>
