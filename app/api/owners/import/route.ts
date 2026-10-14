@@ -4,7 +4,6 @@ import { getScope, scopeWhere } from '@/lib/scope';
 import { normalizeCategory, VEHICLE_CATEGORIES } from '@/lib/vehicle-categories';
 import * as XLSX from 'xlsx';
 
-/** Извлекает ВСЕ телефоны из ячейки (переносы строк, запятые, |, ;) */
 function extractPhones(cell: any): string[] {
   const text = String(cell || '');
   const parts = text.split(/[\n\r,;|]+/);
@@ -26,13 +25,31 @@ function extractNumber(cell: any): number | null {
 function findCol(headers: string[], names: string[]): number {
   for (const name of names) {
     const lower = name.toLowerCase();
-    const idx = headers.findIndex((h) => String(h).toLowerCase().includes(lower));
+    const idx = headers.findIndex((h) =>
+      String(h).toLowerCase().includes(lower),
+    );
     if (idx >= 0) return idx;
   }
   return -1;
 }
 
-const OWNER_ONLY_HEADERS = ['водител', 'хозяин', 'имя', 'название', 'фио', 'телефон', 'номер', 'цена', 'минимал'];
+const OWNER_ONLY_HEADERS = [
+  'водител',
+  'хозяин',
+  'имя',
+  'название',
+  'фио',
+  'телефон',
+  'номер',
+  'цена',
+  'минимал',
+  'адрес',
+  'город',
+  'компания',
+  'дополнительная информация',
+  'доп.инфа',
+  'доп инфа',
+];
 
 export async function POST(req: NextRequest) {
   const scope = await getScope();
@@ -58,9 +75,17 @@ export async function POST(req: NextRequest) {
     for (const sheetName of workbook.SheetNames) {
       if (sheetName === 'Лист1') continue;
       const sheet = workbook.Sheets[sheetName];
-      const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+      const rows: any[][] = XLSX.utils.sheet_to_json(sheet, {
+        header: 1,
+        defval: '',
+      });
       if (rows.length < 2) continue;
-      const validRows = rows.slice(1).filter((r) => extractPhones(r[0]).length > 0);
+      const headers = rows[0].map((h) => String(h));
+      let phoneCol = findCol(headers, ['телефон', 'номер']);
+      if (phoneCol < 0) phoneCol = 0;
+      const validRows = rows
+        .slice(1)
+        .filter((r) => extractPhones(r[phoneCol]).length > 0);
       const normalized = normalizeCategory(sheetName);
       results.push({
         sheet: sheetName,
@@ -71,9 +96,12 @@ export async function POST(req: NextRequest) {
         ownersUpdated: 0,
         vehiclesCreated: 0,
         vehiclesSkipped: 0,
-        errors: normalized === 'Другое' && !/друг/i.test(sheetName)
-          ? [`Лист «${sheetName}» не удалось сопоставить ни с одной рубрикой → пойдёт в «Другое». Доступные рубрики: ${VEHICLE_CATEGORIES.join(', ')}`]
-          : [],
+        errors:
+          normalized === 'Другое' && !/друг/i.test(sheetName)
+            ? [
+                `Лист «${sheetName}» не сопоставлен ни с одной рубрикой → пойдёт в «Другое». Доступные: ${VEHICLE_CATEGORIES.join(', ')}`,
+              ]
+            : [],
       });
     }
     return NextResponse.json({ preview: true, results, cleared: 0 });
@@ -95,30 +123,46 @@ export async function POST(req: NextRequest) {
     if (sheetName === 'Лист1') continue;
 
     const sheet = workbook.Sheets[sheetName];
-    const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+    const rows: any[][] = XLSX.utils.sheet_to_json(sheet, {
+      header: 1,
+      defval: '',
+    });
     if (rows.length < 2) continue;
 
     const category = normalizeCategory(sheetName);
-
     const headers = rows[0].map((h) => String(h));
+
+    let phoneCol = findCol(headers, ['телефон', 'номер']);
+    if (phoneCol < 0) phoneCol = 0;
+
     const nameCol = findCol(headers, ['хозяин', 'имя', 'название', 'фио']);
     const priceCol = findCol(headers, ['цена']);
     const minCol = findCol(headers, ['минимал']);
+    const addressCol = findCol(headers, ['адрес']);
+    const cityCol = findCol(headers, ['город']);
+    const companyCol = findCol(headers, ['компания']);
+    const infoCol = findCol(headers, [
+      'дополнительная информация',
+      'доп.инфа',
+      'доп инфа',
+    ]);
 
-    // 🆕 КАЖДАЯ строка с телефоном = отдельная карточка. Имя НЕ наследуется.
     type ParsedRow = {
       name: string;
       phone: string;
       extraPhones: string | null;
       pricePerHour: number | null;
       minHours: number | null;
+      address: string | null;
+      city: string | null;
+      company: string | null;
       additionalInfo: string | null;
     };
     const parsed: ParsedRow[] = [];
 
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
-      const cellPhones = extractPhones(row[0]);
+      const cellPhones = extractPhones(row[phoneCol]);
       if (!cellPhones.length) continue;
 
       const phone = cellPhones[0];
@@ -127,18 +171,40 @@ export async function POST(req: NextRequest) {
       const rawName = nameCol >= 0 ? String(row[nameCol] || '').trim() : '';
       const name = rawName || 'Без имени';
 
-      const pricePerHour = priceCol >= 0 ? extractNumber(row[priceCol]) : null;
+      const pricePerHour =
+        priceCol >= 0 ? extractNumber(row[priceCol]) : null;
       const minHours = minCol >= 0 ? extractNumber(row[minCol]) : null;
+      const address =
+        addressCol >= 0 ? String(row[addressCol] || '').trim() || null : null;
+      const city =
+        cityCol >= 0 ? String(row[cityCol] || '').trim() || null : null;
+      const company =
+        companyCol >= 0 ? String(row[companyCol] || '').trim() || null : null;
 
-      // Доп.информация — все неслужебные столбцы
+      // Доп.информация: сначала колонка «Дополнительная информация»,
+      // затем все прочие неслужебные столбцы (чтобы не терять данные).
       const infoParts: string[] = [];
+      if (infoCol >= 0) {
+        const direct = String(row[infoCol] || '').trim();
+        if (direct) infoParts.push(direct);
+      }
       for (let j = 0; j < headers.length; j++) {
+        if (
+          j === phoneCol ||
+          j === nameCol ||
+          j === priceCol ||
+          j === minCol ||
+          j === addressCol ||
+          j === cityCol ||
+          j === companyCol ||
+          j === infoCol
+        )
+          continue;
         const h = headers[j];
         const v = String(row[j] || '').trim();
         if (!v || !h) continue;
         const hl = h.toLowerCase();
         if (OWNER_ONLY_HEADERS.some((x) => hl.includes(x))) continue;
-        if (j === priceCol || j === minCol) continue;
         infoParts.push(`${h}: ${v}`);
       }
 
@@ -148,14 +214,23 @@ export async function POST(req: NextRequest) {
         extraPhones,
         pricePerHour,
         minHours,
-        additionalInfo: infoParts.join(' · ') || null,
+        address,
+        city,
+        company,
+        additionalInfo: infoParts.join('\n') || null,
       });
     }
 
     if (!parsed.length) {
       results.push({
-        sheet: sheetName, category, originalSheet: sheetName, rows: 0,
-        ownersCreated: 0, ownersUpdated: 0, vehiclesCreated: 0, vehiclesSkipped: 0,
+        sheet: sheetName,
+        category,
+        originalSheet: sheetName,
+        rows: 0,
+        ownersCreated: 0,
+        ownersUpdated: 0,
+        vehiclesCreated: 0,
+        vehiclesSkipped: 0,
         errors: ['Не найдено ни одного телефона'],
       });
       continue;
@@ -166,25 +241,29 @@ export async function POST(req: NextRequest) {
     try {
       const allPhones = parsed.map((r) => r.phone);
 
-      // Существующие владельцы
       const existing = await prisma.owner.findMany({
-        where: { phone: { in: allPhones }, ...(partnerId ? { partnerId } : {}) },
+        where: {
+          phone: { in: allPhones },
+          ...(partnerId ? { partnerId } : {}),
+        },
         select: { id: true, phone: true },
       });
       const existingPhones = new Set(existing.map((o) => o.phone));
 
-      // Создаём новых
       const toCreate = parsed
         .filter((o) => !existingPhones.has(o.phone))
         .map((o) => ({ ...o, partnerId }));
       let ownersCreated = 0;
       if (toCreate.length) {
-        const res = await prisma.owner.createMany({ data: toCreate, skipDuplicates: true });
+        const res = await prisma.owner.createMany({
+          data: toCreate,
+          skipDuplicates: true,
+        });
         ownersCreated = res.count;
       }
       const ownersUpdated = parsed.length - ownersCreated;
 
-      // Обновляем существующих (заливаем новые поля)
+      // Обновляем существующих — заливаем новые поля и имя
       for (const o of parsed) {
         if (!existingPhones.has(o.phone)) continue;
         const found = existing.find((e) => e.phone === o.phone);
@@ -192,22 +271,27 @@ export async function POST(req: NextRequest) {
         await prisma.owner.update({
           where: { id: found.id },
           data: {
+            name: o.name,
             extraPhones: o.extraPhones,
             pricePerHour: o.pricePerHour,
             minHours: o.minHours,
+            address: o.address,
+            city: o.city,
+            company: o.company,
             additionalInfo: o.additionalInfo,
           },
         });
       }
 
-      // Перечитываем всех, чтобы получить id
       const allOwners = await prisma.owner.findMany({
-        where: { phone: { in: allPhones }, ...(partnerId ? { partnerId } : {}) },
+        where: {
+          phone: { in: allPhones },
+          ...(partnerId ? { partnerId } : {}),
+        },
         select: { id: true, phone: true },
       });
       const idByPhone = new Map(allOwners.map((o) => [o.phone, o.id]));
 
-      // Vehicle — по одной на каждый уникальный телефон
       let vehiclesCreated = 0;
       let vehiclesSkipped = 0;
       const vehiclesToCreate: { ownerId: string; category: string }[] = [];
@@ -215,7 +299,9 @@ export async function POST(req: NextRequest) {
       for (const r of parsed) {
         const ownerId = idByPhone.get(r.phone);
         if (!ownerId) continue;
-        const exists = await prisma.vehicle.findFirst({ where: { ownerId, category } });
+        const exists = await prisma.vehicle.findFirst({
+          where: { ownerId, category },
+        });
         if (exists) {
           vehiclesSkipped++;
           continue;
@@ -229,15 +315,26 @@ export async function POST(req: NextRequest) {
       }
 
       results.push({
-        sheet: sheetName, category, originalSheet: sheetName,
+        sheet: sheetName,
+        category,
+        originalSheet: sheetName,
         rows: parsed.length,
-        ownersCreated, ownersUpdated, vehiclesCreated, vehiclesSkipped, errors,
+        ownersCreated,
+        ownersUpdated,
+        vehiclesCreated,
+        vehiclesSkipped,
+        errors,
       });
     } catch (e: any) {
       results.push({
-        sheet: sheetName, category, originalSheet: sheetName,
+        sheet: sheetName,
+        category,
+        originalSheet: sheetName,
         rows: parsed.length,
-        ownersCreated: 0, ownersUpdated: 0, vehiclesCreated: 0, vehiclesSkipped: 0,
+        ownersCreated: 0,
+        ownersUpdated: 0,
+        vehiclesCreated: 0,
+        vehiclesSkipped: 0,
         errors: [`Ошибка: ${e.message}`],
       });
     }
