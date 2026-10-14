@@ -20,7 +20,6 @@ export default async function OwnersPage({ searchParams }: Props) {
 
   const { category, city, search, active } = searchParams;
 
-  // ✅ Находим userId, у которых есть карточки с городом
   const usersWithCities = await prisma.owner.findMany({
     where: {
       ...scopeWhere(scope),
@@ -35,12 +34,10 @@ export default async function OwnersPage({ searchParams }: Props) {
     .map((u) => u.userId)
     .filter((id): id is string => !!id);
 
-  // ✅ Скрываем регистрационную карточку (без города), если есть карточка с городом
   const owners = await prisma.owner.findMany({
     where: {
       AND: [
         scopeWhere(scope),
-        // Исключаем регистрационную карточку без города, если у User есть города
         userIdsWithCities.length
           ? {
               NOT: {
@@ -84,7 +81,20 @@ export default async function OwnersPage({ searchParams }: Props) {
   });
 
   const categories = allVehicles.map((v) => v.category).sort();
-  const cities = allOwners.map((o) => o.city).filter(Boolean).sort() as string[];
+  const cities = allOwners
+    .map((o) => o.city)
+    .filter(Boolean)
+    .sort() as string[];
+
+  // Собираем ссылку экспорта с текущими фильтрами
+  const exportParams = new URLSearchParams();
+  if (category) exportParams.set('category', category);
+  if (city) exportParams.set('city', city);
+  if (search) exportParams.set('search', search);
+  if (active) exportParams.set('active', active);
+  const exportHref = `/api/owners/export${
+    exportParams.toString() ? '?' + exportParams.toString() : ''
+  }`;
 
   return (
     <div>
@@ -97,6 +107,12 @@ export default async function OwnersPage({ searchParams }: Props) {
         </div>
         <div className="flex gap-2 flex-wrap">
           <ClearAllButton />
+          <a
+            href={exportHref}
+            className="border border-slate-300 px-4 py-2 rounded hover:bg-slate-100"
+          >
+            📤 Экспорт Excel
+          </a>
           <Link
             href="/owners/import"
             className="border border-slate-300 px-4 py-2 rounded hover:bg-slate-100"
