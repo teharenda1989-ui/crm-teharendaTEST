@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import TokenPasswordPrompt from '@/components/TokenPasswordPrompt';
 import Link from 'next/link';
 
 interface Partner {
