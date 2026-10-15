@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import TokenPasswordPrompt from '@/components/TokenPasswordPrompt';
 
 interface PartnerUser {
   id: string;
@@ -43,7 +42,6 @@ export default function PartnerPage() {
   const [resetMsg, setResetMsg] = useState('');
 
   const [showToken, setShowToken] = useState(false);
-  const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
 
   // Города — автодополнение
   const [allCities, setAllCities] = useState<string[]>([]);
@@ -371,23 +369,12 @@ export default function PartnerPage() {
             />
             <button
               type="button"
-              onClick={() => {
-                if (showToken) {
-                  setShowToken(false);
-                } else {
-                  setShowPasswordPrompt(true);
-                }
-              }}
+              onClick={() => setShowToken(!showToken)}
               className="px-4 py-2 rounded border border-slate-300 hover:bg-slate-100 text-sm whitespace-nowrap"
             >
               {showToken ? '🙈 Скрыть' : '👁 Показать'}
             </button>
           </div>
-
-          <p className="text-xs text-slate-400 mt-3">
-            🔒 Для просмотра токена требуется пароль. Хранится в переменной
-            окружения <code>TOKEN_VIEW_PASSWORD</code>.
-          </p>
         </div>
 
         {/* Учётная запись */}
@@ -480,13 +467,6 @@ export default function PartnerPage() {
           </button>
         </div>
       </form>
-
-      {/* Модальное окно запроса пароля для просмотра токена */}
-      <TokenPasswordPrompt
-        open={showPasswordPrompt}
-        onClose={() => setShowPasswordPrompt(false)}
-        onVerified={() => setShowToken(true)}
-      />
     </div>
   );
 }
