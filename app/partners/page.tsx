@@ -1,8 +1,17 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import TokenPasswordPrompt from '@/components/TokenPasswordPrompt';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import TokenPasswordPrompt from '@/components/TokenPasswordPrompt';
+
+interface PartnerUser {
+  id: string;
+  email: string;
+  name: string;
+  isActive: boolean;
+  lastLoginAt: string | null;
+}
 
 interface Partner {
   id: string;
@@ -10,337 +19,474 @@ interface Partner {
   email: string | null;
   phone: string | null;
   city: string | null;
+  cities: string[];
   royaltyPercent: number;
   isActive: boolean;
   comment: string | null;
-  users: {
-    id: string;
-    email: string;
-    name: string;
-    isActive: boolean;
-    lastLoginAt: string | null;
-  }[];
+  maxBotToken: string | null;
+  users: PartnerUser[];
 }
 
-export default function PartnersPage() {
-  const [partners, setPartners] = useState<Partner[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [error, setError] = useState('');
-  const [saving, setSaving] = useState(false);
+export default function PartnerPage() {
+  const router = useRouter();
+  const params = useParams();
+  const id = params.id as string;
 
-  const [form, setForm] = useState({
-    name: '',
-    city: '',
-    phone: '',
-    royaltyPercent: '3',
-    comment: '',
-    createUser: true,
-    userEmail: '',
-    userPassword: '',
-    userName: '',
-  });
+  const [partner, setPartner] = useState<Partner | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [saved, setSaved] = useState(false);
+
+  const [showReset, setShowReset] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [resetMsg, setResetMsg] = useState('');
+
+  const [showToken, setShowToken] = useState(false);
+  const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
+
+  // Города — автодополнение
+  const [allCities, setAllCities] = useState<string[]>([]);
+  const [newCityInput, setNewCityInput] = useState('');
 
   const load = () => {
     setLoading(true);
-    fetch('/api/partners')
+    fetch(`/api/partners/${id}`)
       .then((r) => r.json())
-      .then((data) => setPartners(data))
+      .then((data) => {
+        const cities = Array.isArray(data.cities) ? data.cities : [];
+        setPartner({ ...data, cities });
+      })
+      .catch(() => setError('Не удалось загрузить партнёра'))
       .finally(() => setLoading(false));
+  };
+
+  const loadAllCities = () => {
+    fetch('/api/cities/all')
+      .then((r) => r.json())
+      .then((data: { cities: string[] }) => setAllCities(data.cities || []))
+      .catch(() => setAllCities([]));
   };
 
   useEffect(() => {
     load();
-  }, []);
+    loadAllCities();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
-  const handleAdd = async (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!partner) return;
+
     setError('');
+    setSaved(false);
     setSaving(true);
 
     try {
-      const res = await fetch('/api/partners', {
-        method: 'POST',
+      const res = await fetch(`/api/partners/${id}`, {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...form,
-          royaltyPercent: Number(form.royaltyPercent) || 3,
+          name: partner.name,
+          phone: partner.phone,
+          cities: partner.cities,
+          royaltyPercent: partner.royaltyPercent,
+          comment: partner.comment,
+          isActive: partner.isActive,
+          maxBotToken: partner.maxBotToken,
         }),
       });
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Ошибка');
 
-      // Сброс
-      setForm({
-        name: '',
-        city: '',
-        phone: '',
-        royaltyPercent: '3',
-        comment: '',
-        createUser: true,
-        userEmail: '',
-        userPassword: '',
-        userName: '',
-      });
-      setShowForm(false);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
       load();
-    } catch (err: any) {
-      setError(err.message);
+      loadAllCities();
+    } catch (e: any) {
+      setError(e.message);
     } finally {
       setSaving(false);
     }
   };
 
+  const handleDelete = async () => {
+    if (
+      !confirm('Удалить партнёра и его учётную запись? Действие необратимо.')
+    )
+      return;
+
+    try {
+      await fetch(`/api/partners/${id}`, { method: 'DELETE' });
+      router.push('/partners');
+      router.refresh();
+    } catch (e: any) {
+      setError(e.message);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (newPassword.length < 6) {
+      setResetMsg('Пароль минимум 6 символов');
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/partners/${id}/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newPassword }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setResetMsg(data.error || 'Ошибка');
+        return;
+      }
+
+      setResetMsg('✅ Пароль изменён');
+      setNewPassword('');
+      setTimeout(() => {
+        setShowReset(false);
+        setResetMsg('');
+      }, 2000);
+    } catch (e: any) {
+      setResetMsg(e.message);
+    }
+  };
+
+  // Добавить город из поля
+  const handleAddCity = () => {
+    if (!partner) return;
+    const city = newCityInput.trim();
+    if (!city) return;
+    if (partner.cities.includes(city)) {
+      setNewCityInput('');
+      return;
+    }
+    setPartner({
+      ...partner,
+      cities: [...partner.cities, city].sort(),
+    });
+    setNewCityInput('');
+  };
+
+  // Удалить город
+  const handleRemoveCity = (city: string) => {
+    if (!partner) return;
+    setPartner({
+      ...partner,
+      cities: partner.cities.filter((c) => c !== city),
+    });
+  };
+
+  if (loading) {
+    return <div className="text-slate-500">Загрузка...</div>;
+  }
+
+  if (!partner) {
+    return <div className="text-slate-500">Партнёр не найден</div>;
+  }
+
   return (
-    <div>
-      <div className="flex justify-between items-center mb-6 flex-wrap gap-3">
-        <div>
-          <h1 className="text-3xl font-bold">Партнёры</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Филиалы сети. Каждый видит только свои данные.
-          </p>
-        </div>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
-        >
-          {showForm ? 'Отмена' : '+ Добавить партнёра'}
-        </button>
+    <div className="max-w-3xl">
+      <div className="mb-4">
+        <Link href="/partners" className="text-slate-500 hover:text-slate-900">
+          ← Назад к партнёрам
+        </Link>
       </div>
 
-      {showForm && (
-        <form
-          onSubmit={handleAdd}
-          className="bg-white rounded-lg shadow p-6 mb-6 flex flex-col gap-6"
-        >
-          <div>
-            <h2 className="text-lg font-semibold mb-4">Данные партнёра</h2>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="md:col-span-2">
-                <label className="block text-sm text-slate-600 mb-1">
-                  Название <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  required
-                  placeholder='ООО "Техаrenda Москва" или Филиал СПб'
-                  className="w-full border border-slate-300 rounded px-3 py-2"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm text-slate-600 mb-1">
-                  Город
-                </label>
-                <input
-                  type="text"
-                  value={form.city}
-                  onChange={(e) => setForm({ ...form, city: e.target.value })}
-                  placeholder="Москва"
-                  className="w-full border border-slate-300 rounded px-3 py-2"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm text-slate-600 mb-1">
-                  Телефон
-                </label>
-                <input
-                  type="text"
-                  value={form.phone}
-                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                  placeholder="+7 999 123-45-67"
-                  className="w-full border border-slate-300 rounded px-3 py-2"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm text-slate-600 mb-1">
-                  Процент роялти (%)
-                </label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={form.royaltyPercent}
-                  onChange={(e) =>
-                    setForm({ ...form, royaltyPercent: e.target.value })
-                  }
-                  min="0"
-                  max="100"
-                  className="w-full border border-slate-300 rounded px-3 py-2"
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-sm text-slate-600 mb-1">
-                  Комментарий
-                </label>
-                <input
-                  type="text"
-                  value={form.comment}
-                  onChange={(e) =>
-                    setForm({ ...form, comment: e.target.value })
-                  }
-                  className="w-full border border-slate-300 rounded px-3 py-2"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="border-t border-slate-200 pt-6">
-            <label className="flex items-center gap-3 cursor-pointer mb-4">
+      <form onSubmit={handleSave} className="flex flex-col gap-6">
+        {/* Основные данные */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex justify-between items-center mb-6 flex-wrap gap-3">
+            <h1 className="text-2xl font-bold">{partner.name}</h1>
+            <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
-                checked={form.createUser}
+                checked={partner.isActive}
                 onChange={(e) =>
-                  setForm({ ...form, createUser: e.target.checked })
+                  setPartner({ ...partner, isActive: e.target.checked })
                 }
                 className="w-4 h-4"
               />
-              <span className="text-sm font-medium">
-                Создать учётную запись для входа в систему
-              </span>
+              <span className="text-sm text-slate-600">Активен</span>
             </label>
-
-            {form.createUser && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm text-slate-600 mb-1">
-                    Имя пользователя{' '}
-                    <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={form.userName}
-                    onChange={(e) =>
-                      setForm({ ...form, userName: e.target.value })
-                    }
-                    required={form.createUser}
-                    placeholder="Диспетчер Москва"
-                    className="w-full border border-slate-300 rounded px-3 py-2"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm text-slate-600 mb-1">
-                    Email для входа{' '}
-                    <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="email"
-                    value={form.userEmail}
-                    onChange={(e) =>
-                      setForm({ ...form, userEmail: e.target.value })
-                    }
-                    required={form.createUser}
-                    placeholder="moscow@teharenda.pro"
-                    className="w-full border border-slate-300 rounded px-3 py-2"
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-sm text-slate-600 mb-1">
-                    Пароль (минимум 6 символов){' '}
-                    <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={form.userPassword}
-                    onChange={(e) =>
-                      setForm({ ...form, userPassword: e.target.value })
-                    }
-                    required={form.createUser}
-                    minLength={6}
-                    placeholder="пароль для входа"
-                    className="w-full border border-slate-300 rounded px-3 py-2 font-mono"
-                  />
-                  <p className="text-xs text-slate-500 mt-1">
-                    Сохрани пароль — потом покажешь его партнёру. Менять можно
-                    в любой момент.
-                  </p>
-                </div>
-              </div>
-            )}
           </div>
 
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 rounded p-3 text-sm">
-              {error}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="md:col-span-2">
+              <label className="block text-sm text-slate-600 mb-1">
+                Название
+              </label>
+              <input
+                type="text"
+                value={partner.name}
+                onChange={(e) =>
+                  setPartner({ ...partner, name: e.target.value })
+                }
+                className="w-full border border-slate-300 rounded px-3 py-2"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm text-slate-600 mb-1">
+                Телефон
+              </label>
+              <input
+                type="text"
+                value={partner.phone || ''}
+                onChange={(e) =>
+                  setPartner({ ...partner, phone: e.target.value })
+                }
+                className="w-full border border-slate-300 rounded px-3 py-2"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm text-slate-600 mb-1">
+                Процент роялти (%)
+              </label>
+              <input
+                type="number"
+                step="0.1"
+                value={partner.royaltyPercent}
+                onChange={(e) =>
+                  setPartner({
+                    ...partner,
+                    royaltyPercent: Number(e.target.value) || 0,
+                  })
+                }
+                className="w-full border border-slate-300 rounded px-3 py-2"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-sm text-slate-600 mb-1">
+                Комментарий
+              </label>
+              <textarea
+                value={partner.comment || ''}
+                onChange={(e) =>
+                  setPartner({ ...partner, comment: e.target.value })
+                }
+                rows={3}
+                className="w-full border border-slate-300 rounded px-3 py-2"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* ГОРОДА ПАРТНЁРА */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold mb-2">🏙 Города партнёра</h2>
+          <p className="text-sm text-slate-500 mb-4">
+            Партнёр сможет создавать заявки по этим городам. Исполнители
+            мобильного приложения, указавшие один из этих городов, будут
+            получать его заявки.
+          </p>
+
+          {partner.cities.length === 0 ? (
+            <div className="text-sm text-slate-500 mb-4">
+              Пока нет городов. Добавьте ниже.
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-2 mb-4">
+              {partner.cities.map((c) => (
+                <span
+                  key={c}
+                  className="inline-flex items-center gap-2 bg-orange-100 text-orange-800 px-3 py-1.5 rounded-full text-sm font-medium"
+                >
+                  {c}
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveCity(c)}
+                    className="text-orange-600 hover:text-orange-900 font-bold"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
             </div>
           )}
 
-          <div>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              list="partner-all-cities"
+              value={newCityInput}
+              onChange={(e) => setNewCityInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleAddCity();
+                }
+              }}
+              placeholder="Начните вводить город — появятся подсказки"
+              className="flex-1 border border-slate-300 rounded px-3 py-2"
+              autoComplete="off"
+            />
+            <datalist id="partner-all-cities">
+              {allCities.map((c) => (
+                <option key={c} value={c} />
+              ))}
+            </datalist>
             <button
-              type="submit"
-              disabled={saving}
-              className="bg-green-600 text-white px-6 py-3 rounded hover:bg-green-700 disabled:opacity-50 font-medium"
+              type="button"
+              onClick={handleAddCity}
+              disabled={!newCityInput.trim()}
+              className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 disabled:opacity-50 whitespace-nowrap"
             >
-              {saving ? 'Создаём...' : '💾 Создать партнёра'}
+              + Добавить
             </button>
           </div>
-        </form>
-      )}
 
-      {loading ? (
-        <div className="bg-white rounded-lg shadow p-8 text-center text-slate-500">
-          Загрузка...
+          <p className="text-xs text-slate-400 mt-3">
+            Основной город партнёра — <b>первый</b> в списке. Не забудьте нажать{' '}
+            <b>«Сохранить»</b> внизу, чтобы применить изменения.
+          </p>
         </div>
-      ) : partners.length === 0 ? (
-        <div className="bg-white rounded-lg shadow p-8 text-center text-slate-500">
-          Партнёров пока нет. Добавь первого.
-        </div>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {partners.map((p) => (
-            <Link
-              key={p.id}
-              href={`/partners/${p.id}`}
-              className={`rounded-lg shadow hover:shadow-md transition p-5 block ${
-                p.isActive ? 'bg-white' : 'bg-slate-100 opacity-70'
-              }`}
+
+        {/* MAX Bot Token */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold mb-2">
+            🟣 MAX Bot Token партнёра
+          </h2>
+          <p className="text-sm text-slate-500 mb-4">
+            Партнёр создаёт своего бота в MAX для партнёров, присылает вам
+            токен. Вставьте его сюда — заявки партнёра будут уходить в MAX от
+            имени <b>его</b> бота. Если поле пустое — используется общий бот.
+          </p>
+
+          <div className="flex gap-2">
+            <input
+              type={showToken ? 'text' : 'password'}
+              value={partner.maxBotToken || ''}
+              onChange={(e) =>
+                setPartner({ ...partner, maxBotToken: e.target.value })
+              }
+              placeholder="Вставьте токен из MAX для партнёров"
+              className="flex-1 border border-slate-300 rounded px-3 py-2 font-mono text-sm"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                if (showToken) {
+                  setShowToken(false);
+                } else {
+                  setShowPasswordPrompt(true);
+                }
+              }}
+              className="px-4 py-2 rounded border border-slate-300 hover:bg-slate-100 text-sm whitespace-nowrap"
             >
-              <div className="flex justify-between items-start gap-4 flex-wrap">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-1">
-                    <span className="font-semibold text-lg">{p.name}</span>
-                    {p.city && (
-                      <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded">
-                        {p.city}
-                      </span>
-                    )}
-                    <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
-                      {p.royaltyPercent}%
-                    </span>
-                    {!p.isActive && (
-                      <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded">
-                        выключен
-                      </span>
-                    )}
+              {showToken ? '🙈 Скрыть' : '👁 Показать'}
+            </button>
+          </div>
+
+          <p className="text-xs text-slate-400 mt-3">
+            🔒 Для просмотра токена требуется пароль. Хранится в переменной
+            окружения <code>TOKEN_VIEW_PASSWORD</code>.
+          </p>
+        </div>
+
+        {/* Учётная запись */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold mb-4">Учётная запись</h2>
+
+          {partner.users.length === 0 ? (
+            <p className="text-slate-500 text-sm">
+              У партнёра нет учётной записи. Он не сможет войти в систему.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {partner.users.map((u) => (
+                <div
+                  key={u.id}
+                  className="border border-slate-200 rounded p-4"
+                >
+                  <div className="flex justify-between items-center flex-wrap gap-2">
+                    <div>
+                      <div className="font-medium">{u.name}</div>
+                      <div className="text-sm text-slate-500">{u.email}</div>
+                      {u.lastLoginAt && (
+                        <div className="text-xs text-slate-400 mt-1">
+                          Последний вход:{' '}
+                          {new Date(u.lastLoginAt).toLocaleString('ru-RU')}
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowReset(!showReset)}
+                      className="text-sm px-3 py-1 rounded border border-slate-300 hover:bg-slate-100"
+                    >
+                      🔑 Сменить пароль
+                    </button>
                   </div>
 
-                  {p.phone && (
-                    <div className="text-sm text-slate-500">📞 {p.phone}</div>
-                  )}
-
-                  {p.users.length > 0 ? (
-                    <div className="mt-2 text-xs text-slate-500">
-                      Учётка: {p.users.map((u) => u.email).join(', ')}
-                    </div>
-                  ) : (
-                    <div className="mt-2 text-xs text-slate-400">
-                      Без учётной записи
+                  {showReset && (
+                    <div className="mt-3 pt-3 border-t border-slate-200">
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          placeholder="Новый пароль (мин. 6 символов)"
+                          className="flex-1 border border-slate-300 rounded px-3 py-2 font-mono"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleResetPassword}
+                          className="bg-slate-900 text-white px-4 py-2 rounded hover:bg-slate-700 whitespace-nowrap"
+                        >
+                          Сменить
+                        </button>
+                      </div>
+                      {resetMsg && (
+                        <div className="mt-2 text-sm text-slate-600">
+                          {resetMsg}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
-              </div>
-            </Link>
-          ))}
+              ))}
+            </div>
+          )}
         </div>
-      )}
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 rounded p-3">
+            {error}
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="submit"
+            disabled={saving}
+            className="bg-green-600 text-white px-6 py-3 rounded hover:bg-green-700 disabled:opacity-50 font-medium"
+          >
+            {saving ? 'Сохраняем...' : saved ? '✅ Сохранено' : '💾 Сохранить'}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleDelete}
+            className="px-6 py-3 rounded bg-red-50 text-red-700 hover:bg-red-100"
+          >
+            🗑 Удалить партнёра
+          </button>
+        </div>
+      </form>
+
+      {/* Модальное окно запроса пароля для просмотра токена */}
+      <TokenPasswordPrompt
+        open={showPasswordPrompt}
+        onClose={() => setShowPasswordPrompt(false)}
+        onVerified={() => setShowToken(true)}
+      />
     </div>
   );
 }
